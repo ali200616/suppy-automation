@@ -1,0 +1,32 @@
+name: Hourly Suppy Upload
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Runs every hour
+  workflow_dispatch:      # Also lets you trigger it manually
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+
+    env:
+      USERNAME: ${{ secrets.SUPPY_USERNAME }}
+      PASSWORD: ${{ secrets.SUPPY_PASSWORD }}
+      PARTNER_ID: ${{ secrets.SUPPY_PARTNER_ID }}
+      SHEET_ID: ${{ secrets.SUPPY_SHEET_ID }}
+      SHEET_NAME: ${{ secrets.SUPPY_SHEET_NAME }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run main.py
+        run: python main.py
