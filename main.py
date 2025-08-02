@@ -4,6 +4,8 @@ import requests
 import gspread
 from dotenv import load_dotenv
 from datetime import datetime
+from zoneinfo import ZoneInfo  # Python 3.9+
+lebanon_tz = ZoneInfo("Asia/Beirut")
 
 # Load environment variables
 load_dotenv()
@@ -89,7 +91,7 @@ def main():
     try:
         # Fetch the Google Sheet with better error handling and worksheet listing
         df = fetch_google_sheet(SHEET_ID, SHEET_NAME)
-        csv_name = f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        csv_name = f"export_{datetime.now(lebanon_tz).strftime('%Y%m%d_%H%M%S')}.csv"
         csv_path = save_csv(df, csv_name)
         upload_to_dashboard(csv_path)
         token = get_suppy_token()
