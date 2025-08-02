@@ -6,24 +6,21 @@ from dotenv import load_dotenv
 from datetime import datetime
 import traceback
 
-# Load .env
+# Load environment variables
 load_dotenv()
 
-USERNAME = os.environ.get('USERNAME')
-PASSWORD = os.environ.get('PASSWORD')
-PARTNER_ID = os.environ.get('PARTNER_ID')
-SHEET_ID = os.environ.get('SHEET_ID')
-SHEET_NAME = os.environ.get('SHEET_NAME')
-DASHBOARD_URL = os.environ.get('DASHBOARD_URL', 'https://suppy-automation.onrender.com/upload-log')
+USERNAME = os.getenv("USERNAME")
+PASSWORD = os.getenv("PASSWORD")
+PARTNER_ID = os.getenv("PARTNER_ID")
+SHEET_ID = os.getenv("SHEET_ID")
+SHEET_NAME = os.getenv("SHEET_NAME")
+DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://suppy-automation.onrender.com/upload-log")
 
-# Ensure logs directory exists
 os.makedirs("logs", exist_ok=True)
 
 def log_and_save(log_text, filename=None, df=None):
-    # Append to integration log
     with open('logs/integration-log.txt', 'a', encoding='utf-8') as flog:
         flog.write(log_text + "\n")
-    # Save CSV if provided
     if filename and df is not None:
         df.to_csv(f'logs/{filename}', index=False)
     elif filename and df is None:
@@ -31,8 +28,8 @@ def log_and_save(log_text, filename=None, df=None):
             f.write("Error\n")
 
 def fetch_sheet():
+    print("📥 Downloading Google Sheet...")
     try:
-        print("📥 Downloading Google Sheet...")
         gc = gspread.service_account(filename='credentials.json')
         sh = gc.open_by_key(SHEET_ID)
         ws = sh.worksheet(SHEET_NAME)
@@ -63,8 +60,10 @@ def upload_csv_to_suppy(token, csv_path):
         files = {'file': (os.path.basename(csv_path), f, 'text/csv')}
         data = {'partnerId': PARTNER_ID}
         headers = {'Authorization': f'Bearer {token}'}
+        url = "https://portal-api.suppy.app/api/manual-integration"
+        print("Uploading to:", url)
         resp = requests.post(
-            "https://portal-api.suppy.app/api/manual-integration",
+            url,
             files=files,
             data=data,
             headers=headers
@@ -73,7 +72,7 @@ def upload_csv_to_suppy(token, csv_path):
     if resp.status_code == 200:
         return "Success"
     else:
-        raise Exception(f"Suppy upload failed: {resp.text}")
+        raise Exception(f"Suppy upload failed: {resp}")
 
 def post_to_dashboard(log_text, filename):
     try:
