@@ -1,3 +1,0 @@
-✅ Upload 1 successful - 2025-08-02 20:00
-✅ Upload 2 successful - 2025-08-02 21:00
-❌ Upload failed - 2025-08-02 22:00
