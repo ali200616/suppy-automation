@@ -1,113 +1,113 @@
 import os
 import requests
 import pandas as pd
-from datetime import datetime
-from dotenv import load_dotenv
 import gspread
-from google.oauth2.service_account import Credentials
+from dotenv import load_dotenv
+from datetime import datetime
+import traceback
 
-# Load .env variables
+# Load .env
 load_dotenv()
 
-USERNAME = os.getenv("USERNAME")
-PASSWORD = os.getenv("PASSWORD")
-PARTNER_ID = os.getenv("PARTNER_ID")
-SHEET_ID = os.getenv("SHEET_ID")
-SHEET_NAME = os.getenv("SHEET_NAME")
+USERNAME = os.environ.get('USERNAME')
+PASSWORD = os.environ.get('PASSWORD')
+PARTNER_ID = os.environ.get('PARTNER_ID')
+SHEET_ID = os.environ.get('SHEET_ID')
+SHEET_NAME = os.environ.get('SHEET_NAME')
+DASHBOARD_URL = os.environ.get('DASHBOARD_URL', 'https://suppy-automation.onrender.com/upload-log')
 
+# Ensure logs directory exists
+os.makedirs("logs", exist_ok=True)
 
-# Get data from Google Sheet
-def get_google_sheet():
-    creds = Credentials.from_service_account_file("credentials.json", scopes=[
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ])
-    client = gspread.authorize(creds)
-    sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
-    return sheet.get_all_records()
+def log_and_save(log_text, filename=None, df=None):
+    # Append to integration log
+    with open('logs/integration-log.txt', 'a', encoding='utf-8') as flog:
+        flog.write(log_text + "\n")
+    # Save CSV if provided
+    if filename and df is not None:
+        df.to_csv(f'logs/{filename}', index=False)
+    elif filename and df is None:
+        with open(f'logs/{filename}', 'w', encoding='utf-8') as f:
+            f.write("Error\n")
 
-
-# Save sheet data to CSV
-def save_to_csv(data, filename):
-    df = pd.DataFrame(data)
-    path = os.path.join("logs", filename)
-    df.to_csv(path, index=False)
-    return path
-
-
-# Login to Suppy API and get token
-def login_to_suppy():
-    response = requests.post("https://portal-api.suppy.app/api/users/login", json={
-        "email": USERNAME,
-        "password": PASSWORD
-    })
-    return response.json().get("accessToken")
-
-
-# Upload the CSV file to Suppy
-def upload_csv_to_suppy(csv_file_path, token):
-    with open(csv_file_path, 'rb') as f:
-        files = {'file': f}
-        data = {'partnerId': PARTNER_ID, 'type': '0'}
-        headers = {'Authorization': f'Bearer {token}'}
-        response = requests.post("https://portal-api.suppy.app/api/manual-integration",
-                                 headers=headers, data=data, files=files)
-        return response.status_code, response.text
-
-
-# Push log and CSV to the dashboard
-def push_to_dashboard(filepath, log_text):
-    try:
-        with open(filepath, 'rb') as f:
-            res = requests.post("https://suppy-automation.onrender.com/upload-log", data={
-                "log": log_text,
-                "filename": os.path.basename(filepath)
-            }, files={"file": f})
-            print("✅ Dashboard upload:", res.status_code)
-    except Exception as e:
-        print("❌ Dashboard error:", e)
-
-
-# Main job
-def main():
-    if not os.path.exists("logs"):
-        os.makedirs("logs")
-
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    csv_filename = f"upload_{timestamp}.csv"
-    csv_path = os.path.join("logs", csv_filename)
-
+def fetch_sheet():
     try:
         print("📥 Downloading Google Sheet...")
-        records = get_google_sheet()
-
-        print("📄 Saving to CSV...")
-        csv_path = save_to_csv(records, csv_filename)
-
-        print("🔐 Logging in to Suppy...")
-        token = login_to_suppy()
-        if not token:
-            raise Exception("Login failed: No token")
-
-        print("📤 Uploading CSV to Suppy...")
-        status, message = upload_csv_to_suppy(csv_path, token)
-
-        log_text = f"{timestamp} | Status: {status} | Message: {message}"
-        print("📝", log_text)
-        push_to_dashboard(csv_path, log_text)
-
+        gc = gspread.service_account(filename='credentials.json')
+        sh = gc.open_by_key(SHEET_ID)
+        ws = sh.worksheet(SHEET_NAME)
+        records = ws.get_all_records()
+        df = pd.DataFrame(records)
+        print(f"✅ Sheet fetched: {len(df)} rows")
+        return df
     except Exception as e:
+        print("❌ Error fetching sheet:", e)
+        traceback.print_exc()
+        raise
+
+def login_suppy():
+    print("🔑 Logging in to Suppy...")
+    resp = requests.post(
+        "https://portal-api.suppy.app/api/users/login",
+        json={"email": USERNAME, "password": PASSWORD}
+    )
+    if resp.status_code != 200 or "accessToken" not in resp.json():
+        raise Exception(f"Suppy login failed: {resp.text}")
+    token = resp.json()["accessToken"]
+    print("✅ Suppy login: OK")
+    return token
+
+def upload_csv_to_suppy(token, csv_path):
+    print("⬆️ Uploading CSV to Suppy...")
+    with open(csv_path, 'rb') as f:
+        files = {'file': (os.path.basename(csv_path), f, 'text/csv')}
+        data = {'partnerId': PARTNER_ID}
+        headers = {'Authorization': f'Bearer {token}'}
+        resp = requests.post(
+            "https://portal-api.suppy.app/api/manual-integration",
+            files=files,
+            data=data,
+            headers=headers
+        )
+    print("Suppy upload status:", resp.status_code, resp.text)
+    if resp.status_code == 200:
+        return "Success"
+    else:
+        raise Exception(f"Suppy upload failed: {resp.text}")
+
+def post_to_dashboard(log_text, filename):
+    try:
+        with open(f'logs/{filename}', 'rb') as file:
+            files = {'file': (filename, file, 'text/csv')}
+            data = {'log': log_text, 'filename': filename}
+            resp = requests.post(DASHBOARD_URL, files=files, data=data)
+            print(f"✅ Dashboard upload: {resp.status_code}")
+            if resp.status_code != 200:
+                print("Warning: Dashboard POST did not return 200.")
+    except Exception as e:
+        print("❌ Dashboard upload failed:", e)
+        traceback.print_exc()
+
+def main():
+    now = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    log_entry = f"{now} | "  # Will append result
+    filename = f"upload_{now}.csv"
+    try:
+        df = fetch_sheet()
+        if df.empty:
+            raise Exception("Google Sheet is empty or could not be loaded.")
+        df.to_csv(f"logs/{filename}", index=False)
+        token = login_suppy()
+        result = upload_csv_to_suppy(token, f"logs/{filename}")
+        log_entry += f"Upload OK | Rows: {len(df)}"
+        log_and_save(log_entry, filename=filename, df=df)
+        post_to_dashboard(log_entry, filename)
+    except Exception as e:
+        error_fname = f"error_{now}.csv"
+        error_text = f"{log_entry} ERROR: {e}"
+        log_and_save(error_text, filename=error_fname, df=None)
+        post_to_dashboard(error_text, error_fname)
         print("❌ Error:", e)
-        log_text = f"{timestamp} | ERROR: {e}"
 
-        # Create an error CSV for the dashboard
-        empty_path = os.path.join("logs", f"error_{timestamp}.csv")
-        with open(empty_path, "w") as f:
-            f.write("Error")
-
-        push_to_dashboard(empty_path, log_text)
-
-
-# Run
 if __name__ == "__main__":
     main()

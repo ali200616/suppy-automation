@@ -1,87 +1,52 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Suppy Integration Dashboard</title>
-  <style>
-    body {
-      background-color: #1f1f1f;
-      color: #f5f5f5;
-      font-family: 'Segoe UI', sans-serif;
-      margin: 0;
-      padding: 20px;
-    }
-    header {
-      display: flex;
-      align-items: center;
-      margin-bottom: 30px;
-    }
-    header img {
-      height: 60px;
-      margin-right: 20px;
-    }
-    h1 {
-      font-size: 1.8rem;
-      margin: 0;
-    }
-    .section {
-      margin-bottom: 40px;
-    }
-    .section h2 {
-      border-bottom: 1px solid #444;
-      padding-bottom: 10px;
-      font-size: 1.4rem;
-    }
-    ul, ol {
-      background: #2a2a2a;
-      padding: 15px;
-      border-radius: 8px;
-    }
-    li {
-      padding: 5px 0;
-      border-bottom: 1px solid #444;
-    }
-    li:last-child {
-      border-bottom: none;
-    }
-    a {
-      color: #4db6ac;
-      text-decoration: none;
-    }
-    .timestamp {
-      font-size: 0.9rem;
-      color: #aaa;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <title>Suppy Integration Dashboard</title>
+    <link href="https://fonts.googleapis.com/css?family=Montserrat:700,400" rel="stylesheet">
+    <style>
+        body { background: #181818; color: #fff; font-family: 'Montserrat', sans-serif; }
+        .container { width: 900px; margin: 40px auto; }
+        h1 { font-size: 2.5em; margin: 0.5em 0 0.2em; }
+        .logo { width: 180px; }
+        .section { background: #222; border-radius: 10px; margin-bottom: 32px; padding: 24px; }
+        .section-title { font-size: 1.2em; margin-bottom: 16px; }
+        .log-list, .csv-list { background: #111; border-radius: 8px; padding: 12px; }
+        .log-list pre { margin: 0; color: #82e082; font-size: 1em; }
+        .csv-list ul { list-style: none; padding: 0; }
+        .csv-list li { margin: 8px 0; }
+        a { color: #7fd1ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .timestamp { color: #aaa; font-size: 0.9em; }
+    </style>
 </head>
 <body>
-  <header>
-    <img src="/static/logo.png" alt="Company Logo" />
-    <h1>Suppy Integration Dashboard</h1>
-  </header>
-
-  <div class="section">
-    <h2>Last Updated</h2>
-    <p class="timestamp">{{ updated }}</p>
-  </div>
-
-  <div class="section">
-    <h2>Upload Log</h2>
-    <ul>
-      {% for entry in logs %}
-      <li>{{ entry }}</li>
-      {% endfor %}
-    </ul>
-  </div>
-
-  <div class="section">
-    <h2>Uploaded CSVs</h2>
-    <ol>
-      {% for file in files %}
-      <li><a href="/download/{{ file }}">{{ file }}</a></li>
-      {% endfor %}
-    </ol>
-  </div>
+    <div class="container">
+        <img src="{{ url_for('static', filename='logo.png') }}" class="logo" alt="Al Forno Logo">
+        <h1>Suppy Integration Dashboard</h1>
+        <div class="timestamp">Last Updated<br>{{ last_updated }}</div>
+        <div class="section">
+            <div class="section-title">Upload Log</div>
+            <div class="log-list">
+                {% if logs %}
+                    <pre>{% for line in logs %}{{ line }}{% endfor %}</pre>
+                {% else %}
+                    <pre>No log entries yet.</pre>
+                {% endif %}
+            </div>
+        </div>
+        <div class="section">
+            <div class="section-title">Uploaded CSVs</div>
+            <div class="csv-list">
+                <ul>
+                {% for csv in csvs %}
+                    <li><a href="{{ url_for('download', filename=csv) }}">{{ csv }}</a></li>
+                {% else %}
+                    <li>No CSV files found.</li>
+                {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
