@@ -21,11 +21,14 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Set up environment variables
+        run: |
+          echo "SUPPY_EMAIL=${{ secrets.SUPPY_EMAIL }}" >> $GITHUB_ENV
+          echo "SUPPY_PASSWORD=${{ secrets.SUPPY_PASSWORD }}" >> $GITHUB_ENV
+          echo "PARTNER_ID=${{ secrets.PARTNER_ID }}" >> $GITHUB_ENV
+          echo "SHEET_ID=${{ secrets.SHEET_ID }}" >> $GITHUB_ENV
+          echo "SHEET_NAME=${{ secrets.SHEET_NAME }}" >> $GITHUB_ENV
+          echo "DASHBOARD_URL=${{ secrets.DASHBOARD_URL }}" >> $GITHUB_ENV
+
       - name: Run main.py
-        env:
-          USERNAME: ${{ secrets.USERNAME }}
-          PASSWORD: ${{ secrets.PASSWORD }}
-          PARTNER_ID: ${{ secrets.PARTNER_ID }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-          SHEET_NAME: ${{ secrets.SHEET_NAME }}
         run: python main.py
