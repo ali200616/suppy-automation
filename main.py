@@ -34,7 +34,17 @@ def login_to_suppy():
         "email": USERNAME,
         "password": PASSWORD
     })
-    return response.json().get("accessToken")
+
+    if response.status_code != 200:
+        print("❌ Login failed with status:", response.status_code)
+        print("❌ Response:", response.text)
+        return None
+
+    try:
+        return response.json().get("accessToken")
+    except Exception as e:
+        print("❌ Failed to parse login response:", e)
+        return None
 
 def upload_csv_to_suppy(csv_file_path, token):
     with open(csv_file_path, 'rb') as f:
@@ -83,13 +93,16 @@ def main():
         push_to_dashboard(csv_path, log_text)
 
     except Exception as e:
-        print("❌ Error:", e)
-        # Create an empty CSV if it doesn't exist
-        if not os.path.exists(csv_path):
-            with open(csv_path, 'w') as f:
-                f.write("Error\n")
-        log_text = f"{timestamp} | ERROR: {e}"
-        push_to_dashboard(csv_path, log_text)
+    print("❌ Error:", e)
+    log_text = f"{timestamp} | ERROR: {e}"
+
+    # Create a new error CSV file with the log
+    empty_path = os.path.join("logs", f"error_{timestamp}.csv")
+    with open(empty_path, "w") as f:
+        f.write("Error")
+
+    push_to_dashboard(empty_path, log_text)
+
 
 if __name__ == "__main__":
     main()
