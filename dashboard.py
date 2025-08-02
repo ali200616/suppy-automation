@@ -6,8 +6,12 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    log_file = 'logs/integration-log.txt'
+    logs_dir = 'logs'
+    log_file = os.path.join(logs_dir, 'integration-log.txt')
     uploads = []
+
+    if not os.path.exists(logs_dir):
+        os.makedirs(logs_dir)
 
     if os.path.exists(log_file):
         with open(log_file, 'r') as f:
@@ -15,13 +19,11 @@ def index():
         for line in reversed(lines[-50:]):
             uploads.append(line.strip())
 
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
-
-    csv_files = sorted(
-        [f for f in os.listdir('logs') if f.endswith('.csv')],
-        reverse=True
-    )
+    csv_files = []
+    if os.path.exists(logs_dir):
+        for file in sorted(os.listdir(logs_dir), reverse=True):
+            if file.endswith('.csv'):
+                csv_files.append(file)
 
     return render_template(
         'index.html',
@@ -36,27 +38,21 @@ def download_file(filename):
 
 @app.route('/upload-log', methods=['POST'])
 def upload_log():
-    print("📥 Received upload")
-
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
-        print("📁 Created logs/ folder")
+    logs_dir = 'logs'
+    if not os.path.exists(logs_dir):
+        os.makedirs(logs_dir)
 
     log_text = request.form.get('log')
     filename = request.form.get('filename')
     csv_file = request.files.get('file')
 
     if log_text:
-        with open('logs/integration-log.txt', 'a') as f:
+        with open(os.path.join(logs_dir, 'integration-log.txt'), 'a') as f:
             f.write(log_text + '\n')
-        print("📝 Log saved")
 
     if csv_file and filename:
-        path = os.path.join('logs', filename)
-        csv_file.save(path)
-        print(f"✅ Saved file: {filename}")
-    else:
-        print("❌ Missing CSV or filename")
+        csv_path = os.path.join(logs_dir, filename)
+        csv_file.save(csv_path)
 
     return 'OK', 200
 
