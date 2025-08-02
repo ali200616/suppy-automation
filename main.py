@@ -59,7 +59,6 @@ def get_suppy_token():
     print("Suppy login text:", resp.text)
     if resp.status_code != 200:
         raise Exception(f"Suppy login failed: {resp.text}")
-    # CHANGE: Look for token in the correct place
     data = resp.json()
     token = None
     if "accessToken" in data:
@@ -79,9 +78,14 @@ def save_csv(df, filename):
 
 def upload_to_dashboard(csv_path):
     print("⬆️ Uploading to dashboard...")
+    filename = os.path.basename(csv_path)
+    log_line = f"{datetime.now(lebanon_tz).strftime('%Y-%m-%d %H:%M:%S')} Uploaded {filename}"
+
     with open(csv_path, "rb") as f:
-        files = {"file": (os.path.basename(csv_path), f, "text/csv")}
-        r = requests.post(DASHBOARD_URL, files=files)
+        files = {"file": (filename, f, "text/csv")}
+        data = {"filename": filename, "log": log_line}
+        r = requests.post(DASHBOARD_URL, files=files, data=data)
+
     print(f"✅ Dashboard upload: {r.status_code}")
     if r.status_code != 200:
         print("⚠️ Dashboard returned:", r.text)
@@ -89,14 +93,11 @@ def upload_to_dashboard(csv_path):
 
 def main():
     try:
-        # Fetch the Google Sheet with better error handling and worksheet listing
         df = fetch_google_sheet(SHEET_ID, SHEET_NAME)
         csv_name = f"export_{datetime.now(lebanon_tz).strftime('%Y%m%d_%H%M%S')}.csv"
         csv_path = save_csv(df, csv_name)
         upload_to_dashboard(csv_path)
         token = get_suppy_token()
-        # You can now use the token for further Suppy API actions here
-        
     except Exception as e:
         print(f"❌ Error: {e}")
 
