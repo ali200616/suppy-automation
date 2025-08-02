@@ -6,20 +6,25 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    log_file = 'logs/integration-log.txt'
-    uploads = []
+    logs = []
+    csv_files = []
 
+    # Create logs folder if it doesn't exist
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+
+    # Read log file if it exists
+    log_file = 'logs/integration-log.txt'
     if os.path.exists(log_file):
         with open(log_file, 'r') as f:
-            lines = f.readlines()
-        for line in reversed(lines[-50:]):
-            uploads.append(line.strip())
+            logs = [line.strip() for line in f.readlines()][-50:]
 
-    csv_files = sorted(os.listdir('logs'), reverse=True)
-    csv_files = [f for f in csv_files if f.endswith('.csv')]
+    # Get list of CSVs in logs/
+    csv_files = [f for f in os.listdir('logs') if f.endswith('.csv')]
+    csv_files.sort(reverse=True)
 
     return render_template('index.html',
-        logs=uploads,
+        logs=logs,
         files=csv_files,
         updated=datetime.now().strftime('%Y-%m-%d %H:%M')
     )
