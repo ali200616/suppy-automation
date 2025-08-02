@@ -1,4 +1,5 @@
-from flask import Flask, render_template, send_from_directory
+# dashboard.py
+from flask import Flask, render_template, send_from_directory, request
 import os
 from datetime import datetime
 
@@ -32,6 +33,25 @@ def index():
 @app.route('/download/<filename>')
 def download_file(filename):
     return send_from_directory('logs', filename, as_attachment=True)
+
+# NEW ENDPOINT TO RECEIVE FILES FROM GITHUB ACTION
+@app.route('/upload-log', methods=['POST'])
+def upload_log():
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+
+    log_text = request.form.get('log')
+    filename = request.form.get('filename')
+    csv_file = request.files.get('file')
+
+    if log_text:
+        with open('logs/integration-log.txt', 'a') as f:
+            f.write(log_text + '\n')
+
+    if csv_file and filename:
+        csv_file.save(os.path.join('logs', filename))
+
+    return 'OK', 200
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
