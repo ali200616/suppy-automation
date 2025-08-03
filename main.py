@@ -76,7 +76,7 @@ def get_suppy_token():
 
 def save_csv(df, filename):
     path = os.path.join(LOGS_DIR, filename)
-    df.to_csv(path, index=False, encoding="utf-8-sig", line_terminator="\n")
+    df.to_csv(path, index=False, encoding="utf-8-sig", lineterminator="\n")
     print(f"✅ Data saved to {path}")
     return path
 
