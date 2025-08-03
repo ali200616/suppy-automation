@@ -31,8 +31,5 @@ jobs:
           echo "SHEET_NAME=${{ secrets.SHEET_NAME }}" >> $GITHUB_ENV
           echo "DASHBOARD_URL=${{ secrets.DASHBOARD_URL }}" >> $GITHUB_ENV
 
-      - name: Run OneDrive file change alert
-        run: python onedrive_changealert.py
-
       - name: Run main.py
         run: python main.py
