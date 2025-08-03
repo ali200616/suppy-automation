@@ -32,7 +32,7 @@ jobs:
           echo "DASHBOARD_URL=${{ secrets.DASHBOARD_URL }}" >> $GITHUB_ENV
 
       - name: Run OneDrive file change alert
-        run: python onedrive_file_alert.py
+        run: ondedrive_changealert.py
 
       - name: Run main.py
         run: python main.py
