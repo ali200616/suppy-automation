@@ -5,12 +5,16 @@ import gspread
 from dotenv import load_dotenv
 from datetime import datetime
 from zoneinfo import ZoneInfo  # Python 3.9+
+
+# Timezone for Beirut
 lebanon_tz = ZoneInfo("Asia/Beirut")
 
 # Load environment variables
 load_dotenv()
 
+# Environment variables
 SUPPY_LOGIN_URL = "https://portal-api.suppy.app/api/users/login"
+SUPPY_UPLOAD_URL = "https://portal-api.suppy.app/api/manual-integration"
 SUPPY_EMAIL = os.getenv("SUPPY_EMAIL")
 SUPPY_PASSWORD = os.getenv("SUPPY_PASSWORD")
 PARTNER_ID = os.getenv("PARTNER_ID")
@@ -72,7 +76,7 @@ def get_suppy_token():
 
 def save_csv(df, filename):
     path = os.path.join(LOGS_DIR, filename)
-    df.to_csv(path, index=False)
+    df.to_csv(path, index=False, encoding="utf-8-sig", line_terminator="\n")
     print(f"✅ Data saved to {path}")
     return path
 
@@ -88,18 +92,44 @@ def upload_to_dashboard(csv_path):
 
     print(f"✅ Dashboard upload: {r.status_code}")
     if r.status_code != 200:
-        print("⚠️ Dashboard returned:", r.text)
-    return r.status_code
+        print("❌ Dashboard upload failed:", r.text)
+
+    # Also log locally
+    with open(os.path.join(LOGS_DIR, "integration-log.txt"), "a", encoding="utf-8") as logf:
+        logf.write(log_line + "\n")
+
+def upload_to_suppy(csv_path, token):
+    print("📤 Uploading CSV to Suppy...")
+    with open(csv_path, "rb") as f:
+        files = {
+            "file": (os.path.basename(csv_path), f, "text/csv")
+        }
+        data = {
+            "partnerId": str(PARTNER_ID),
+            "type": "0"
+        }
+        headers = {
+            "Authorization": f"Bearer {token}"
+        }
+        response = requests.post(SUPPY_UPLOAD_URL, headers=headers, files=files, data=data)
+
+    print(f"📡 Suppy upload status: {response.status_code}")
+    print(f"📨 Suppy response: {response.text}")
+
+    # Log the response to integration-log.txt
+    log_line = f"[{datetime.now(lebanon_tz).strftime('%Y-%m-%d %H:%M:%S')}] Suppy upload response: {response.status_code} - {response.text}\n"
+    with open(os.path.join(LOGS_DIR, "integration-log.txt"), "a", encoding="utf-8") as logf:
+        logf.write(log_line)
 
 def main():
-    try:
-        df = fetch_google_sheet(SHEET_ID, SHEET_NAME)
-        csv_name = f"export_{datetime.now(lebanon_tz).strftime('%Y%m%d_%H%M%S')}.csv"
-        csv_path = save_csv(df, csv_name)
-        upload_to_dashboard(csv_path)
-        token = get_suppy_token()
-    except Exception as e:
-        print(f"❌ Error: {e}")
+    df = fetch_google_sheet(SHEET_ID, SHEET_NAME)
+    timestamp = datetime.now(lebanon_tz).strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"{timestamp}.csv"
+    csv_path = save_csv(df, filename)
+
+    token = get_suppy_token()
+    upload_to_suppy(csv_path, token)
+    upload_to_dashboard(csv_path)
 
 if __name__ == "__main__":
     main()
