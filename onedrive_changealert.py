@@ -28,12 +28,16 @@ def get_graph_token():
 
 def find_file_and_modified_time(token, filename):
     headers = {"Authorization": f"Bearer {token}"}
-    url = "https://graph.microsoft.com/v1.0/me/drive/root/children"
+    # Use user-specific endpoint instead of /me/
+    url = "https://graph.microsoft.com/v1.0/users/houjairydata@outlook.com/drive/root/children"
+    print(f"🔍 Checking OneDrive URL: {url}")
+    
     while url:
         r = requests.get(url, headers=headers)
         r.raise_for_status()
         items = r.json().get("value", [])
         for item in items:
+            print(f"📁 Found: {item['name']}")
             if item["name"] == filename:
                 return item["lastModifiedDateTime"]
         url = r.json().get("@odata.nextLink")
@@ -63,6 +67,8 @@ def main():
         last_modified = datetime.strptime(modified_time_str, "%Y-%m-%dT%H:%M:%S.%fZ")
         last_modified = last_modified.replace(tzinfo=timezone.utc)
         now = datetime.utcnow().replace(tzinfo=timezone.utc)
+
+        print(f"🕒 Last modified: {last_modified} | Now: {now}")
 
         # Compare time
         if (now - last_modified).total_seconds() < 3600:
