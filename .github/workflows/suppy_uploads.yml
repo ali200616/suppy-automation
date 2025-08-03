@@ -20,6 +20,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
+          pip install requests
 
       - name: Set up environment variables
         run: |
@@ -29,6 +30,9 @@ jobs:
           echo "SHEET_ID=${{ secrets.SHEET_ID }}" >> $GITHUB_ENV
           echo "SHEET_NAME=${{ secrets.SHEET_NAME }}" >> $GITHUB_ENV
           echo "DASHBOARD_URL=${{ secrets.DASHBOARD_URL }}" >> $GITHUB_ENV
+
+      - name: Run OneDrive file change alert
+        run: python onedrive_file_alert.py
 
       - name: Run main.py
         run: python main.py
