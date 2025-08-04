@@ -7,7 +7,6 @@ from flask import Flask, request, render_template, send_from_directory
 from dotenv import load_dotenv
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from threading import Thread
 
 # Load environment variables
 load_dotenv()
@@ -28,9 +27,6 @@ SHEET_NAME = os.getenv("SHEET_NAME")
 DASHBOARD_URL = os.getenv("DASHBOARD_URL")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-SUPPY_LOGIN_URL = "https://portal-api.suppy.app/api/users/login"
-SUPPY_UPLOAD_URL = "https://portal-api.suppy.app/api/manual-integration"
 
 app = Flask(__name__)
 
@@ -56,51 +52,10 @@ def fetch_google_sheet():
         df = df.drop(columns=['Product Name'])
     return df
 
-def get_suppy_token():
-    resp = requests.post(
-        SUPPY_LOGIN_URL,
-        json={"username": SUPPY_EMAIL, "password": SUPPY_PASSWORD, "partnerId": int(PARTNER_ID)}
-    )
-    print(f"DEBUG: Suppy login response {resp.status_code} - {resp.text}", flush=True)
-    try:
-        data = resp.json()
-        token = data.get("accessToken") or data.get("data", {}).get("token")
-    except Exception as e:
-        print(f"❌ JSON parse error: {e}", flush=True)
-        print(f"❌ Raw response: {resp.text}", flush=True)
-        token = None
-    print(f"DEBUG: Token used: {token}", flush=True)
-    return token
-
 def save_csv(df, filename):
     path = os.path.join(LOGS_DIR, filename)
     df.to_csv(path, index=False, encoding="utf-8-sig", lineterminator="\n")
     return path
-
-def upload_to_suppy(csv_path):
-    print("▶️ Using hardcoded token and verified working upload method", flush=True)
-
-    # ✅ This is the token you confirmed works with curl
-    token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1laWQiOiI5MmI1YzVlOC04NDIxLTQ2YmYtOGRkOS0wZjQzMWI4ZGI0YWIiLCJyb2xlIjoiW1AzXSBBcHAgTWFuYWdlciAiLCJwcmltYXJ5Z3JvdXBzaWQiOiI1NyIsIm5iZiI6MTc1NDMwMjUxNiwiZXhwIjoxNzU1MzM5MzE2LCJpYXQiOjE3NTQzMDI1MTZ9.AsKcbfuv8PeMYBw0XFuX6i2hUgCWOw2xJcYrU6dklAc"
-
-    headers = {
-        "Authorization": f"Bearer {token}"
-    }
-
-    files = {
-        "file": (os.path.basename(csv_path), open(csv_path, "rb"), "text/csv")
-    }
-
-    data = {
-        "partnerId": "57",
-        "type": "0"
-    }
-
-    print("📤 Uploading to Suppy...", flush=True)
-    r = requests.post("https://portal-api.suppy.app/api/manual-integration", headers=headers, files=files, data=data)
-    print(f"📥 Response: {r.status_code} - {r.text}", flush=True)
-
-    return r.status_code, r.text
 
 def upload_to_dashboard(csv_path):
     filename = os.path.basename(csv_path)
@@ -112,22 +67,6 @@ def upload_to_dashboard(csv_path):
         print(f"DEBUG: Dashboard upload response {resp.status_code} - {resp.text}", flush=True)
     with open(os.path.join(LOGS_DIR, "integration-log.txt"), "a", encoding="utf-8") as f:
         f.write(log_line + "\n")
-
-def run_full_upload():
-    try:
-        print("▶️ Starting upload process...", flush=True)
-        df = fetch_google_sheet()
-        timestamp = datetime.now(lebanon_tz).strftime("%Y-%m-%d_%H-%M-%S")
-        csv_path = save_csv(df, f"{timestamp}.csv")
-        code, response = upload_to_suppy(csv_path)
-        upload_to_dashboard(csv_path)
-        if code == 200:
-            send_telegram_message(f"✅ Upload successful.\n{timestamp}.csv")
-        else:
-            send_telegram_message(f"❌ Suppy upload failed:\n{response}")
-    except Exception as e:
-        print(f"❌ Upload exception: {e}", flush=True)
-        send_telegram_message(f"❌ Upload error: {e}")
 
 def check_google_sheet_edit():
     try:
@@ -171,9 +110,6 @@ def telegram_webhook():
             send_telegram_message("📜 Last 50 log lines:\n" + "".join(lines[-10:]))
         else:
             send_telegram_message("⚠️ No logs found.")
-    elif text == "/upload":
-        run_full_upload()
-        send_telegram_message("⏳ Uploading now...")
     return "OK", 200
 
 @app.route("/")
@@ -203,7 +139,10 @@ def receive_dashboard_upload():
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "run-job":
-        run_full_upload()
+        df = fetch_google_sheet()
+        timestamp = datetime.now(lebanon_tz).strftime("%Y-%m-%d_%H-%M-%S")
+        csv_path = save_csv(df, f"{timestamp}.csv")
+        upload_to_dashboard(csv_path)
         check_google_sheet_edit()
     else:
         app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
