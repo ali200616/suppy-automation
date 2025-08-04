@@ -63,7 +63,9 @@ def get_suppy_token():
     )
     print(f"DEBUG: Suppy login response {resp.status_code} - {resp.text}", flush=True)
     data = resp.json()
-    return data.get("accessToken") or data.get("data", {}).get("token")
+    token = data.get("accessToken") or data.get("data", {}).get("token")
+    print(f"DEBUG: Token used: {token}", flush=True)
+    return token
 
 def save_csv(df, filename):
     path = os.path.join(LOGS_DIR, filename)
@@ -75,8 +77,13 @@ def upload_to_suppy(csv_path, token):
         files = {"file": (os.path.basename(csv_path), f, "text/csv")}
         data = {"partnerId": str(PARTNER_ID), "type": "0"}
         headers = {"Authorization": f"Bearer {token}"}
+
+        print("DEBUG: Uploading with headers:", headers, flush=True)
+        print("DEBUG: Uploading with data:", data, flush=True)
+
         r = requests.post(SUPPY_UPLOAD_URL, headers=headers, files=files, data=data)
         print(f"DEBUG: Suppy upload response {r.status_code} - {r.text}", flush=True)
+
     log_line = f"[{datetime.now(lebanon_tz)}] Suppy upload: {r.status_code} - {r.text}\n"
     with open(os.path.join(LOGS_DIR, "integration-log.txt"), "a", encoding="utf-8") as f:
         f.write(log_line)
