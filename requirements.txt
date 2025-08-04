@@ -1,8 +1,7 @@
-python-telegram-bot==20.7
-flask==3.0.0
+flask==2.3.3
+python-telegram-bot==13.15
 gspread==6.0.2
-pandas==2.2.0
+pandas==1.5.3
 requests==2.31.0
 python-dotenv==1.0.1
 google-auth==2.26.2
-Cython==0.29.36
