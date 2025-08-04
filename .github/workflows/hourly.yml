@@ -22,9 +22,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Save credentials.json
+    - name: Decode credentials.json from base64
       run: |
-        echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" > credentials.json
+        echo "${{ secrets.GSHEET_CREDENTIALS_B64 }}" | base64 --decode > credentials.json
 
     - name: Run automation
       env:
