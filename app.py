@@ -80,6 +80,7 @@ def upload_to_suppy(csv_path, token):
         data = {"partnerId": str(PARTNER_ID), "type": "0"}
         headers = {"Authorization": f"Bearer {token}"}
         r = requests.post(SUPPY_UPLOAD_URL, headers=headers, files=files, data=data)
+        print(f"DEBUG: Suppy response {r.status_code} - {r.text}")
     log_line = f"[{datetime.now(lebanon_tz)}] Suppy upload: {r.status_code} - {r.text}\n"
     with open(os.path.join(LOGS_DIR, "integration-log.txt"), "a", encoding="utf-8") as f:
         f.write(log_line)
