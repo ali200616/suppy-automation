@@ -9,18 +9,17 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from threading import Thread
 
-# Load env vars
+# Load environment variables
 load_dotenv()
 
 # Timezone
 lebanon_tz = ZoneInfo("Asia/Beirut")
 
-# Constants
+# Constants and environment
 LOGS_DIR = "logs"
 os.makedirs(LOGS_DIR, exist_ok=True)
 LAST_SHEET_EDIT_FILE = os.path.join(LOGS_DIR, "last_sheet_edit.txt")
 
-# ENV
 SUPPY_EMAIL = os.getenv("SUPPY_EMAIL")
 SUPPY_PASSWORD = os.getenv("SUPPY_PASSWORD")
 PARTNER_ID = os.getenv("PARTNER_ID")
@@ -30,15 +29,14 @@ DASHBOARD_URL = os.getenv("DASHBOARD_URL")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# URLs
 SUPPY_LOGIN_URL = "https://portal-api.suppy.app/api/users/login"
 SUPPY_UPLOAD_URL = "https://portal-api.suppy.app/api/manual-integration"
 
 app = Flask(__name__)
 
-# ======================
-# 🔁 Shared Functions
-# ======================
+# ---------------------
+# Shared Functions
+# ---------------------
 
 def send_telegram_message(text):
     try:
@@ -51,10 +49,7 @@ def send_telegram_message(text):
 def fetch_google_sheet():
     gc = gspread.service_account(filename="credentials.json")
     sh = gc.open_by_key(SHEET_ID)
-    try:
-        worksheet = sh.worksheet(SHEET_NAME)
-    except:
-        worksheet = sh.get_worksheet(0)
+    worksheet = sh.worksheet(SHEET_NAME)
     data = worksheet.get_all_records()
     df = pd.DataFrame(data)
     if 'Product Name' in df.columns:
@@ -111,7 +106,6 @@ def run_full_upload():
         else:
             send_telegram_message(f"❌ Suppy upload failed:\n{response}")
     except Exception as e:
-        # ✅ Properly indented!
         if hasattr(e, 'response') and e.response is not None:
             print(f"❌ Upload exception (API): {e.response.status_code} - {e.response.text}", flush=True)
             send_telegram_message(f"❌ Upload error: {e.response.text}")
@@ -119,9 +113,25 @@ def run_full_upload():
             print(f"❌ Upload exception: {e}", flush=True)
             send_telegram_message(f"❌ Upload error: {e}")
 
-# ======================
-# 📦 Telegram Webhook
-# ======================
+def check_google_sheet_edit():
+    try:
+        gc = gspread.service_account(filename="credentials.json")
+        sh = gc.open_by_key(SHEET_ID)
+        meta = sh.fetch_sheet_metadata()
+        modified_time = meta["modifiedTime"]
+        if os.path.exists(LAST_SHEET_EDIT_FILE):
+            with open(LAST_SHEET_EDIT_FILE, "r") as f:
+                last_time = f.read().strip()
+            if modified_time != last_time:
+                send_telegram_message("📝 Google Sheet was edited.")
+        with open(LAST_SHEET_EDIT_FILE, "w") as f:
+            f.write(modified_time)
+    except Exception as e:
+        print(f"❌ Edit check error: {e}", flush=True)
+
+# ---------------------
+# Telegram Webhook
+# ---------------------
 
 @app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
@@ -154,9 +164,9 @@ def telegram_webhook():
         send_telegram_message("⏳ Uploading now...")
     return "OK", 200
 
-# ======================
-# 🖥️ Dashboard Routes
-# ======================
+# ---------------------
+# Dashboard Routes
+# ---------------------
 
 @app.route("/")
 def index():
@@ -182,29 +192,14 @@ def receive_dashboard_upload():
         f.write(log + "\n")
     return "OK", 200
 
-# ======================
-# 🔁 Google Sheet Edit Detection
-# ======================
-
-def check_google_sheet_edit():
-    try:
-        gc = gspread.service_account(filename="credentials.json")
-        sh = gc.open_by_key(SHEET_ID)
-        meta = sh.fetch_sheet_metadata()
-        modified_time = meta["modifiedTime"]
-        if os.path.exists(LAST_SHEET_EDIT_FILE):
-            with open(LAST_SHEET_EDIT_FILE, "r") as f:
-                last_time = f.read().strip()
-            if modified_time != last_time:
-                send_telegram_message("📝 Google Sheet was edited.")
-        with open(LAST_SHEET_EDIT_FILE, "w") as f:
-            f.write(modified_time)
-    except Exception as e:
-        print(f"❌ Edit check error: {e}", flush=True)
-
-# ======================
-# ▶️ App Runner
-# ======================
+# ---------------------
+# Main App Entry
+# ---------------------
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "run-job":
+        run_full_upload()
+        check_google_sheet_edit()
+    else:
+        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
