@@ -1,72 +1,90 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, send_from_directory, url_for
 from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
-    MessageHandler,
-    filters,
     ContextTypes
 )
 import os
 import logging
 from dotenv import load_dotenv
+from datetime import datetime
+
+# === Load environment variables ===
 load_dotenv()
 
-# Initialize Flask
+# === Flask App ===
 app = Flask(__name__)
 
-# Telegram config
+# === Telegram Config ===
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 DASHBOARD_URL = os.getenv('DASHBOARD_URL')
 
-# Set up logging
+# === Logging Config ===
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# Initialize Telegram bot
+# === Telegram Bot ===
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-# ===== TELEGRAM HANDLERS =====
+# === TELEGRAM HANDLERS ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send welcome message"""
     await update.message.reply_text('🚀 Suppy Automation Bot is running!')
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send system status"""
     try:
         with open('logs/integration-log.txt', 'r') as f:
-            logs = f.readlines()[-1]
-        await update.message.reply_text(f"📊 Last log entry:\n{logs}")
+            last_line = f.readlines()[-1]
+        await update.message.reply_text(f"📊 Last log entry:\n{last_line}")
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
-# ===== FLASK ROUTES =====
+# === REGISTER TELEGRAM HANDLERS ===
+def setup_handlers():
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("status", status))
+
+# === FLASK ROUTES ===
 @app.route('/')
 def dashboard():
-    return "Suppy Automation Dashboard"
+    try:
+        with open("logs/integration-log.txt", "r") as f:
+            logs = f.readlines()[-50:]
+    except:
+        logs = []
+
+    try:
+        csvs = sorted(
+            [f for f in os.listdir("logs") if f.endswith(".csv")],
+            reverse=True
+        )
+    except:
+        csvs = []
+
+    return render_template(
+        "index.html",
+        logs=logs,
+        csvs=csvs,
+        last_updated=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+
+@app.route('/logs/<path:filename>')
+def download(filename):
+    return send_from_directory('logs', filename, as_attachment=True)
 
 @app.post('/telegram-webhook')
 async def webhook():
-    """Handle Telegram updates"""
     update = Update.de_json(await request.get_json(), application.bot)
     await application.process_update(update)
     return jsonify(success=True)
 
-# ===== MAIN SETUP =====
-def setup_handlers():
-    """Register Telegram command handlers"""
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("status", status))
-
+# === MAIN ENTRYPOINT ===
 if __name__ == '__main__':
-    # Set up Telegram handlers
     setup_handlers()
-    
-    # Configure webhook
+
     async def post_init(app):
         await application.bot.set_webhook(f"{DASHBOARD_URL}/telegram-webhook")
-    
-    # Start Flask app
+
     app.run(host='0.0.0.0', port=5000)
