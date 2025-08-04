@@ -6,7 +6,7 @@ import gspread
 from flask import Flask, request, render_template, send_from_directory
 from dotenv import load_dotenv
 from datetime import datetime
-from zoneinfo import ZoneInfo  # Python 3.9+
+from zoneinfo import ZoneInfo
 from threading import Thread
 
 # Load env vars
@@ -46,7 +46,7 @@ def send_telegram_message(text):
         payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text}
         requests.post(url, data=payload)
     except Exception as e:
-        print(f"❌ Telegram error: {e}")
+        print(f"❌ Telegram error: {e}", flush=True)
 
 def fetch_google_sheet():
     gc = gspread.service_account(filename="credentials.json")
@@ -66,6 +66,7 @@ def get_suppy_token():
         SUPPY_LOGIN_URL,
         json={"username": SUPPY_EMAIL, "password": SUPPY_PASSWORD, "partnerId": int(PARTNER_ID)}
     )
+    print(f"DEBUG: Suppy login response {resp.status_code} - {resp.text}", flush=True)
     data = resp.json()
     return data.get("accessToken") or data.get("data", {}).get("token")
 
@@ -80,7 +81,7 @@ def upload_to_suppy(csv_path, token):
         data = {"partnerId": str(PARTNER_ID), "type": "0"}
         headers = {"Authorization": f"Bearer {token}"}
         r = requests.post(SUPPY_UPLOAD_URL, headers=headers, files=files, data=data)
-        print(f"DEBUG: Suppy response {r.status_code} - {r.text}")
+        print(f"DEBUG: Suppy upload response {r.status_code} - {r.text}", flush=True)
     log_line = f"[{datetime.now(lebanon_tz)}] Suppy upload: {r.status_code} - {r.text}\n"
     with open(os.path.join(LOGS_DIR, "integration-log.txt"), "a", encoding="utf-8") as f:
         f.write(log_line)
@@ -98,6 +99,7 @@ def upload_to_dashboard(csv_path):
 
 def run_full_upload():
     try:
+        print("▶️ Starting upload process...", flush=True)
         df = fetch_google_sheet()
         timestamp = datetime.now(lebanon_tz).strftime("%Y-%m-%d_%H-%M-%S")
         csv_path = save_csv(df, f"{timestamp}.csv")
@@ -109,6 +111,7 @@ def run_full_upload():
         else:
             send_telegram_message(f"❌ Suppy upload failed:\n{response}")
     except Exception as e:
+        print(f"❌ Upload exception: {e}", flush=True)
         send_telegram_message(f"❌ Upload error: {e}")
 
 # ======================
@@ -124,6 +127,8 @@ def telegram_webhook():
     msg = data["message"]
     chat_id = msg["chat"]["id"]
     text = msg.get("text", "")
+
+    print(f"📨 Message received: {text} from {chat_id}", flush=True)
 
     if str(chat_id) != TELEGRAM_CHAT_ID:
         return "Unauthorized", 403
@@ -173,7 +178,7 @@ def receive_dashboard_upload():
     return "OK", 200
 
 # ======================
-# 🔁 Google Sheet Edit Detection (optional)
+# 🔁 Google Sheet Edit Detection
 # ======================
 
 def check_google_sheet_edit():
@@ -190,7 +195,7 @@ def check_google_sheet_edit():
         with open(LAST_SHEET_EDIT_FILE, "w") as f:
             f.write(modified_time)
     except Exception as e:
-        print(f"❌ Edit check error: {e}")
+        print(f"❌ Edit check error: {e}", flush=True)
 
 # ======================
 # ▶️ App Runner
