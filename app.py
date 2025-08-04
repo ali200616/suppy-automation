@@ -136,10 +136,6 @@ def check_google_sheet_edit():
     except Exception as e:
         print(f"❌ Edit check error: {e}", flush=True)
 
-# ---------------------
-# Telegram Webhook
-# ---------------------
-
 @app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
     data = request.json
@@ -171,10 +167,6 @@ def telegram_webhook():
         send_telegram_message("⏳ Uploading now...")
     return "OK", 200
 
-# ---------------------
-# Dashboard Routes
-# ---------------------
-
 @app.route("/")
 def index():
     log_file = os.path.join(LOGS_DIR, "integration-log.txt")
@@ -198,10 +190,6 @@ def receive_dashboard_upload():
     with open(os.path.join(LOGS_DIR, "integration-log.txt"), "a", encoding="utf-8") as f:
         f.write(log + "\n")
     return "OK", 200
-
-# ---------------------
-# Main App Entry
-# ---------------------
 
 if __name__ == "__main__":
     import sys
