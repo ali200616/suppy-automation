@@ -111,13 +111,13 @@ def run_full_upload():
         else:
             send_telegram_message(f"❌ Suppy upload failed:\n{response}")
     except Exception as e:
-    # If it's a requests.Response error, show more info
-    if hasattr(e, 'response') and e.response is not None:
-        print(f"❌ Upload exception (API): {e.response.status_code} - {e.response.text}", flush=True)
-        send_telegram_message(f"❌ Upload error: {e.response.text}")
-    else:
-        print(f"❌ Upload exception: {e}", flush=True)
-        send_telegram_message(f"❌ Upload error: {e}")
+        # ✅ Properly indented!
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"❌ Upload exception (API): {e.response.status_code} - {e.response.text}", flush=True)
+            send_telegram_message(f"❌ Upload error: {e.response.text}")
+        else:
+            print(f"❌ Upload exception: {e}", flush=True)
+            send_telegram_message(f"❌ Upload error: {e}")
 
 # ======================
 # 📦 Telegram Webhook
