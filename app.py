@@ -7,6 +7,7 @@ from flask import Flask, request, render_template, send_from_directory
 from dotenv import load_dotenv
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from threading import Thread
 
 # Load environment variables
 load_dotenv()
@@ -78,9 +79,9 @@ def save_csv(df, filename):
 
 def upload_to_suppy(csv_path, token):
     if not token:
-        print("❌ No token. Upload aborted.", flush=True)
-        return 401, "No token retrieved"
-
+        print("❌ Missing token, skipping upload", flush=True)
+        return 0, "Missing token"
+    print(f"DEBUG: Preparing to upload to {SUPPY_UPLOAD_URL}", flush=True)
     with open(csv_path, "rb") as f:
         files = {"file": (os.path.basename(csv_path), f, "text/csv")}
         data = {"partnerId": str(PARTNER_ID), "type": "0"}
@@ -90,8 +91,7 @@ def upload_to_suppy(csv_path, token):
         print("DEBUG: Uploading with data:", data, flush=True)
 
         r = requests.post(SUPPY_UPLOAD_URL, headers=headers, files=files, data=data)
-        print(f"DEBUG: Suppy upload response {r.status_code}", flush=True)
-        print(f"DEBUG: Suppy response text:\n{r.text}", flush=True)
+        print(f"DEBUG: Suppy upload response {r.status_code} - {r.text}", flush=True)
 
     log_line = f"[{datetime.now(lebanon_tz)}] Suppy upload: {r.status_code} - {r.text}\n"
     with open(os.path.join(LOGS_DIR, "integration-log.txt"), "a", encoding="utf-8") as f:
@@ -169,8 +169,8 @@ def telegram_webhook():
         else:
             send_telegram_message("⚠️ No logs found.")
     elif text == "/upload":
-        send_telegram_message("⏳ Uploading now...")
         run_full_upload()
+        send_telegram_message("⏳ Uploading now...")
     return "OK", 200
 
 @app.route("/")
