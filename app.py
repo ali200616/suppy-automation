@@ -77,25 +77,29 @@ def save_csv(df, filename):
     df.to_csv(path, index=False, encoding="utf-8-sig", lineterminator="\n")
     return path
 
-def upload_to_suppy(csv_path, token):
-    if not token:
-        print("❌ Missing token, skipping upload", flush=True)
-        return 0, "Missing token"
-    print(f"DEBUG: Preparing to upload to {SUPPY_UPLOAD_URL}", flush=True)
-    with open(csv_path, "rb") as f:
-        files = {"file": (os.path.basename(csv_path), f, "text/csv")}
-        data = {"partnerId": str(PARTNER_ID), "type": "0"}
-        headers = {"Authorization": f"Bearer {token}"}
+def upload_to_suppy(csv_path):
+    print("▶️ Using hardcoded token and verified working upload method", flush=True)
 
-        print("DEBUG: Uploading with headers:", headers, flush=True)
-        print("DEBUG: Uploading with data:", data, flush=True)
+    # ✅ This is the token you confirmed works with curl
+    token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1laWQiOiI5MmI1YzVlOC04NDIxLTQ2YmYtOGRkOS0wZjQzMWI4ZGI0YWIiLCJyb2xlIjoiW1AzXSBBcHAgTWFuYWdlciAiLCJwcmltYXJ5Z3JvdXBzaWQiOiI1NyIsIm5iZiI6MTc1NDMwMjUxNiwiZXhwIjoxNzU1MzM5MzE2LCJpYXQiOjE3NTQzMDI1MTZ9.AsKcbfuv8PeMYBw0XFuX6i2hUgCWOw2xJcYrU6dklAc"
 
-        r = requests.post(SUPPY_UPLOAD_URL, headers=headers, files=files, data=data)
-        print(f"DEBUG: Suppy upload response {r.status_code} - {r.text}", flush=True)
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
 
-    log_line = f"[{datetime.now(lebanon_tz)}] Suppy upload: {r.status_code} - {r.text}\n"
-    with open(os.path.join(LOGS_DIR, "integration-log.txt"), "a", encoding="utf-8") as f:
-        f.write(log_line)
+    files = {
+        "file": (os.path.basename(csv_path), open(csv_path, "rb"), "text/csv")
+    }
+
+    data = {
+        "partnerId": "57",
+        "type": "0"
+    }
+
+    print("📤 Uploading to Suppy...", flush=True)
+    r = requests.post("https://portal-api.suppy.app/api/manual-integration", headers=headers, files=files, data=data)
+    print(f"📥 Response: {r.status_code} - {r.text}", flush=True)
+
     return r.status_code, r.text
 
 def upload_to_dashboard(csv_path):
@@ -115,8 +119,7 @@ def run_full_upload():
         df = fetch_google_sheet()
         timestamp = datetime.now(lebanon_tz).strftime("%Y-%m-%d_%H-%M-%S")
         csv_path = save_csv(df, f"{timestamp}.csv")
-        token = get_suppy_token()
-        code, response = upload_to_suppy(csv_path, token)
+        code, response = upload_to_suppy(csv_path)
         upload_to_dashboard(csv_path)
         if code == 200:
             send_telegram_message(f"✅ Upload successful.\n{timestamp}.csv")
