@@ -12,15 +12,14 @@ from threading import Thread
 # Load environment variables
 load_dotenv()
 
-# Timezone setup
+# Timezone
 lebanon_tz = ZoneInfo("Asia/Beirut")
 
-# Constants
+# Constants and environment
 LOGS_DIR = "logs"
 os.makedirs(LOGS_DIR, exist_ok=True)
 LAST_SHEET_EDIT_FILE = os.path.join(LOGS_DIR, "last_sheet_edit.txt")
 
-# Environment Variables
 SUPPY_EMAIL = os.getenv("SUPPY_EMAIL")
 SUPPY_PASSWORD = os.getenv("SUPPY_PASSWORD")
 PARTNER_ID = os.getenv("PARTNER_ID")
@@ -30,14 +29,14 @@ DASHBOARD_URL = os.getenv("DASHBOARD_URL")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# API URLs
 SUPPY_LOGIN_URL = "https://portal-api.suppy.app/api/users/login"
 SUPPY_UPLOAD_URL = "https://portal-api.suppy.app/api/manual-integration"
 
-# Flask App
 app = Flask(__name__)
 
-# Telegram Notification
+# ---------------------
+# Shared Functions
+# ---------------------
 
 def send_telegram_message(text):
     try:
@@ -46,8 +45,6 @@ def send_telegram_message(text):
         requests.post(url, data=payload)
     except Exception as e:
         print(f"❌ Telegram error: {e}", flush=True)
-
-# Google Sheets
 
 def fetch_google_sheet():
     gc = gspread.service_account(filename="credentials.json")
@@ -59,8 +56,6 @@ def fetch_google_sheet():
         df = df.drop(columns=['Product Name'])
     return df
 
-# Suppy Token
-
 def get_suppy_token():
     resp = requests.post(
         SUPPY_LOGIN_URL,
@@ -69,21 +64,18 @@ def get_suppy_token():
     print(f"DEBUG: Suppy login response {resp.status_code} - {resp.text}", flush=True)
     try:
         data = resp.json()
+        token = data.get("accessToken") or data.get("data", {}).get("token")
     except Exception as e:
         print(f"❌ JSON parse error: {e}", flush=True)
-        return None
-    token = data.get("accessToken") or data.get("data", {}).get("token")
+        print(f"❌ Raw response: {resp.text}", flush=True)
+        token = None
     print(f"DEBUG: Token used: {token}", flush=True)
     return token
-
-# Save CSV
 
 def save_csv(df, filename):
     path = os.path.join(LOGS_DIR, filename)
     df.to_csv(path, index=False, encoding="utf-8-sig", lineterminator="\n")
     return path
-
-# Upload to Suppy
 
 def upload_to_suppy(csv_path, token):
     with open(csv_path, "rb") as f:
@@ -95,14 +87,13 @@ def upload_to_suppy(csv_path, token):
         print("DEBUG: Uploading with data:", data, flush=True)
 
         r = requests.post(SUPPY_UPLOAD_URL, headers=headers, files=files, data=data)
-        print(f"DEBUG: Suppy upload response {r.status_code} - {r.text}", flush=True)
+        print(f"DEBUG: Suppy upload response {r.status_code}")
+        print(f"DEBUG: Suppy response text:\n{r.text}", flush=True)
 
     log_line = f"[{datetime.now(lebanon_tz)}] Suppy upload: {r.status_code} - {r.text}\n"
     with open(os.path.join(LOGS_DIR, "integration-log.txt"), "a", encoding="utf-8") as f:
         f.write(log_line)
     return r.status_code, r.text
-
-# Upload to Dashboard
 
 def upload_to_dashboard(csv_path):
     filename = os.path.basename(csv_path)
@@ -114,8 +105,6 @@ def upload_to_dashboard(csv_path):
     with open(os.path.join(LOGS_DIR, "integration-log.txt"), "a", encoding="utf-8") as f:
         f.write(log_line + "\n")
 
-# Run Full Upload
-
 def run_full_upload():
     try:
         print("▶️ Starting upload process...", flush=True)
@@ -123,8 +112,6 @@ def run_full_upload():
         timestamp = datetime.now(lebanon_tz).strftime("%Y-%m-%d_%H-%M-%S")
         csv_path = save_csv(df, f"{timestamp}.csv")
         token = get_suppy_token()
-        if not token:
-            raise Exception("Failed to retrieve Suppy token")
         code, response = upload_to_suppy(csv_path, token)
         upload_to_dashboard(csv_path)
         if code == 200:
@@ -138,8 +125,6 @@ def run_full_upload():
         else:
             print(f"❌ Upload exception: {e}", flush=True)
             send_telegram_message(f"❌ Upload error: {e}")
-
-# Detect Google Sheet Edits
 
 def check_google_sheet_edit():
     try:
@@ -156,8 +141,6 @@ def check_google_sheet_edit():
             f.write(modified_time)
     except Exception as e:
         print(f"❌ Edit check error: {e}", flush=True)
-
-# Telegram Bot Endpoint
 
 @app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
@@ -186,11 +169,9 @@ def telegram_webhook():
         else:
             send_telegram_message("⚠️ No logs found.")
     elif text == "/upload":
-        Thread(target=run_full_upload).start()
+        run_full_upload()
         send_telegram_message("⏳ Uploading now...")
     return "OK", 200
-
-# Dashboard Page
 
 @app.route("/")
 def index():
@@ -215,8 +196,6 @@ def receive_dashboard_upload():
     with open(os.path.join(LOGS_DIR, "integration-log.txt"), "a", encoding="utf-8") as f:
         f.write(log + "\n")
     return "OK", 200
-
-# Entry Point
 
 if __name__ == "__main__":
     import sys
