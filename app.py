@@ -1,19 +1,17 @@
-# ✅ FINAL VERSION OF app.py
-
-from flask import Flask, request, jsonify, render_template, send_from_directory, url_for
+from flask import Flask, request, jsonify, render_template, send_from_directory
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 import os
 import logging
 from dotenv import load_dotenv
 from datetime import datetime
+import pytz
 
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 
-# Telegram bot configuration
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 DASHBOARD_URL = os.getenv('DASHBOARD_URL')
@@ -25,6 +23,10 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
+# Time in Lebanon
+def now_lebanon():
+    return datetime.now(pytz.timezone("Asia/Beirut"))
 
 # Telegram bot handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -46,12 +48,11 @@ async def logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
-# Register handlers
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("status", status))
 application.add_handler(CommandHandler("logs", logs))
 
-# Dashboard route
+# Dashboard homepage
 @app.route('/')
 def dashboard():
     try:
@@ -72,10 +73,15 @@ def dashboard():
         "index.html",
         logs=logs,
         csvs=csvs,
-        last_updated=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        last_updated=now_lebanon().strftime("%Y-%m-%d %H:%M:%S")
     )
 
-#app route
+# Download route for CSVs
+@app.route('/logs/<path:filename>')
+def download(filename):
+    return send_from_directory('logs', filename, as_attachment=True)
+
+# ✅ Fix: only one /upload-log route
 @app.route('/upload-log', methods=['POST'])
 def upload_log():
     file = request.files.get('file')
@@ -83,48 +89,22 @@ def upload_log():
 
     os.makedirs("logs", exist_ok=True)
 
-    # Save CSV file
     if file:
         file_path = os.path.join("logs", file.filename)
         file.save(file_path)
 
-    # Save log entry
     if log_entry:
         with open("logs/integration-log.txt", "a") as log_file:
             log_file.write(log_entry + "\n")
 
     return jsonify(success=True)
 
-# Route to download uploaded CSVs
-@app.route('/logs/<path:filename>')
-def download(filename):
-    return send_from_directory('logs', filename, as_attachment=True)
-
-# Route to accept file + log POST (used by main.py)
-@app.route('/upload-log', methods=['POST'])
-def receive_upload():
-    file = request.files.get('file')
-    log_entry = request.form.get('log')
-
-    if file:
-        os.makedirs("logs", exist_ok=True)
-        path = os.path.join("logs", file.filename)
-        file.save(path)
-
-    if log_entry:
-        with open("logs/integration-log.txt", "a") as log:
-            log.write(log_entry + "\n")
-
-    return jsonify(success=True)
-
-# Telegram webhook for POST from Telegram
 @app.post('/telegram-webhook')
 async def webhook():
     update = Update.de_json(await request.get_json(), application.bot)
     await application.process_update(update)
     return jsonify(success=True)
 
-# Entrypoint
 if __name__ == '__main__':
     async def post_init(app):
         await application.bot.set_webhook(f"{DASHBOARD_URL}/telegram-webhook")

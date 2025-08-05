@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
-from hashlib import sha256  # <-- NEW
+from hashlib import sha256
+import pytz
 
 load_dotenv()
 
@@ -28,6 +29,10 @@ def send_telegram_message(text):
         "text": text
     })
 
+# Get Lebanon time
+def now_lebanon():
+    return datetime.now(pytz.timezone("Asia/Beirut"))
+
 try:
     # Load Google Sheet
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
@@ -37,18 +42,18 @@ try:
     data = sheet.get_all_values()
     headers, rows = data[0], data[1:]
 
-    # ✅ CHECK FOR SHEET EDITS
+    # ✅ Detect sheet edits
     sheet_string = "\n".join([",".join(row) for row in rows])
     current_hash = sha256(sheet_string.encode()).hexdigest()
-
     LAST_HASH_FILE = "logs/last_sheet_hash.txt"
+
     last_hash = ""
     if os.path.exists(LAST_HASH_FILE):
         with open(LAST_HASH_FILE, "r") as f:
             last_hash = f.read().strip()
 
     if current_hash != last_hash:
-        send_telegram_message(f"✏️ Google Sheet was edited at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        send_telegram_message(f"✏️ Google Sheet was edited at {now_lebanon().strftime('%Y-%m-%d %H:%M:%S')}")
         with open(LAST_HASH_FILE, "w") as f:
             f.write(current_hash)
 
@@ -58,8 +63,8 @@ try:
     df = pd.DataFrame(cleaned_data, columns=cleaned_headers)
 
     # Save CSV
-    now = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_name = f"logs/upload_{now}.csv"
+    now_str = now_lebanon().strftime("%Y%m%d_%H%M%S")
+    csv_name = f"logs/upload_{now_str}.csv"
     df.to_csv(csv_name, index=False)
 
     # Suppy login
@@ -88,26 +93,24 @@ try:
 
     # Upload to dashboard
     upload_url = f"{DASHBOARD_URL.rstrip('/')}/upload-log"
-    print("Uploading to:", upload_url)  # Debug
-
     with open(csv_name, 'rb') as f:
         dashboard_upload = requests.post(
             upload_url,
             files={"file": (os.path.basename(csv_name), f, 'text/csv')},
-            data={"log": f"[SUCCESS] {now} File uploaded: {csv_name}"}
+            data={"log": f"[SUCCESS] {now_str} File uploaded: {csv_name}"}
         )
 
     if dashboard_upload.status_code != 200:
         raise Exception(f"Dashboard upload failed: {dashboard_upload.status_code} - {dashboard_upload.text}")
 
-    msg = f"✅ Upload succeeded at {now}\nFile: {os.path.basename(csv_name)}"
+    msg = f"✅ Upload succeeded at {now_str}\nFile: {os.path.basename(csv_name)}"
     send_telegram_message(msg)
 
     with open("logs/integration-log.txt", "a") as log:
-        log.write(f"[SUCCESS] {now} File uploaded: {csv_name}\n")
+        log.write(f"[SUCCESS] {now_str} File uploaded: {csv_name}\n")
 
 except Exception as e:
     err = f"❌ Upload failed: {str(e)}"
     send_telegram_message(err)
     with open("logs/integration-log.txt", "a") as log:
-        log.write(f"[ERROR] {datetime.now()} {str(e)}\n")
+        log.write(f"[ERROR] {now_lebanon()} {str(e)}\n")
