@@ -1,3 +1,24 @@
+
+from suppy_token_selenium import get_suppy_token
+import requests
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SUPPY_TOKEN = get_suppy_token()
+
+if not SUPPY_TOKEN:
+    print("❌ Failed to get token. Exiting.")
+    exit(1)
+
+headers = {
+    "Authorization": SUPPY_TOKEN,
+    "portal-v2": "true",
+    "Content-Type": "application/json"
+}
+
+# Your existing logic here (from original main.py):
 import os
 import pandas as pd
 import requests
@@ -5,10 +26,11 @@ from datetime import datetime
 import gspread
 from dotenv import load_dotenv
 from oauth2client.service_account import ServiceAccountCredentials
-from suppy_token_selenium import get_suppy_token
 
 load_dotenv()
 
+SUPPY_EMAIL = os.getenv("SUPPY_EMAIL")
+SUPPY_PASSWORD = os.getenv("SUPPY_PASSWORD")
 PARTNER_ID = os.getenv("PARTNER_ID")
 SHEET_ID = os.getenv("SHEET_ID")
 SHEET_NAME = os.getenv("SHEET_NAME")
@@ -38,6 +60,25 @@ def log_and_notify(message, level="info"):
         send_telegram_notification(f"{prefix} {message}")
     print(entry.strip())
 
+def get_suppy_token():
+    try:
+        headers = {
+            "Content-Type": "application/json",
+            "portal-v2": "true"
+        }
+        res = requests.post("https://portal-api.suppy.app/api/users/login", json={
+            "email": SUPPY_EMAIL,
+            "password": SUPPY_PASSWORD
+        }, headers=headers)
+        res.raise_for_status()
+        return res.json().get("token")
+    except Exception as e:
+        log_and_notify(f"Failed to get Suppy token: {e}", "error")
+        if res is not None:
+            log_and_notify(f"Status Code: {res.status_code}", "error")
+            log_and_notify(f"Response Body: {res.text}", "error")
+        return None
+
 def download_and_prepare_csv():
     try:
         creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", [
@@ -61,10 +102,6 @@ def upload_to_suppy(token, csv_path):
     try:
         with open(csv_path, "rb") as f:
             files = {"file": (os.path.basename(csv_path), f)}
-            headers = {
-                "Authorization": token,
-                "portal-v2": "true"
-            }
             res = requests.post(
                 "https://portal-api.suppy.app/api/manual-integration",
                 headers=headers,
