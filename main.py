@@ -48,7 +48,7 @@ try:
 
     # Suppy login
     login = requests.post("https://portal-api.suppy.app/api/users/login", json={
-        "email": SUPPY_EMAIL,
+        "username": SUPPY_EMAIL,
         "password": SUPPY_PASSWORD
     })
 
