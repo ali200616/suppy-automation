@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+from hashlib import sha256  # <-- NEW
 
 load_dotenv()
 
@@ -35,6 +36,21 @@ try:
     sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
     data = sheet.get_all_values()
     headers, rows = data[0], data[1:]
+
+    # ✅ CHECK FOR SHEET EDITS
+    sheet_string = "\n".join([",".join(row) for row in rows])
+    current_hash = sha256(sheet_string.encode()).hexdigest()
+
+    LAST_HASH_FILE = "logs/last_sheet_hash.txt"
+    last_hash = ""
+    if os.path.exists(LAST_HASH_FILE):
+        with open(LAST_HASH_FILE, "r") as f:
+            last_hash = f.read().strip()
+
+    if current_hash != last_hash:
+        send_telegram_message(f"✏️ Google Sheet was edited at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        with open(LAST_HASH_FILE, "w") as f:
+            f.write(current_hash)
 
     # Remove column C (index 2)
     cleaned_data = [row[:2] + row[3:] for row in rows]
@@ -84,7 +100,6 @@ try:
     if dashboard_upload.status_code != 200:
         raise Exception(f"Dashboard upload failed: {dashboard_upload.status_code} - {dashboard_upload.text}")
 
-    # Success message
     msg = f"✅ Upload succeeded at {now}\nFile: {os.path.basename(csv_name)}"
     send_telegram_message(msg)
 

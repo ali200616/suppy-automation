@@ -75,6 +75,26 @@ def dashboard():
         last_updated=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
 
+#app route
+@app.route('/upload-log', methods=['POST'])
+def upload_log():
+    file = request.files.get('file')
+    log_entry = request.form.get('log')
+
+    os.makedirs("logs", exist_ok=True)
+
+    # Save CSV file
+    if file:
+        file_path = os.path.join("logs", file.filename)
+        file.save(file_path)
+
+    # Save log entry
+    if log_entry:
+        with open("logs/integration-log.txt", "a") as log_file:
+            log_file.write(log_entry + "\n")
+
+    return jsonify(success=True)
+
 # Route to download uploaded CSVs
 @app.route('/logs/<path:filename>')
 def download(filename):
