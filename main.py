@@ -20,16 +20,13 @@ DASHBOARD_URL = os.getenv("DASHBOARD_URL")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# Create logs dir if missing
+# Create logs dir
 os.makedirs("logs", exist_ok=True)
 
+# Send Telegram message
 def send_telegram_message(text):
-    requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", params={
-        "chat_id": CHAT_ID,
-        "text": text
-    })
+    requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", params={"chat_id": CHAT_ID, "text": text})
 
-# Get Lebanon time
 def now_lebanon():
     return datetime.now(pytz.timezone("Asia/Beirut"))
 
@@ -42,22 +39,20 @@ try:
     data = sheet.get_all_values()
     headers, rows = data[0], data[1:]
 
-    # ✅ Detect sheet edits
-    sheet_string = "\n".join([",".join(row) for row in rows])
+    # Detect edits
+    sheet_string = "\n".join(["".join(row) for row in rows])
     current_hash = sha256(sheet_string.encode()).hexdigest()
     LAST_HASH_FILE = "logs/last_sheet_hash.txt"
-
     last_hash = ""
     if os.path.exists(LAST_HASH_FILE):
         with open(LAST_HASH_FILE, "r") as f:
             last_hash = f.read().strip()
-
     if current_hash != last_hash:
         send_telegram_message(f"✏️ Google Sheet was edited at {now_lebanon().strftime('%Y-%m-%d %H:%M:%S')}")
         with open(LAST_HASH_FILE, "w") as f:
             f.write(current_hash)
 
-    # Remove column C (index 2)
+    # Remove column C
     cleaned_data = [row[:2] + row[3:] for row in rows]
     cleaned_headers = headers[:2] + headers[3:]
     df = pd.DataFrame(cleaned_data, columns=cleaned_headers)
@@ -67,45 +62,27 @@ try:
     csv_name = f"logs/upload_{now_str}.csv"
     df.to_csv(csv_name, index=False)
 
-    # Suppy login
-    login = requests.post("https://portal-api.suppy.app/api/users/login", json={
-        "username": SUPPY_EMAIL,
-        "password": SUPPY_PASSWORD
-    })
-
+    # Login to Suppy
+    login = requests.post("https://portal-api.suppy.app/api/users/login", json={"username": SUPPY_EMAIL, "password": SUPPY_PASSWORD})
     if login.status_code != 200:
         raise Exception(f"Suppy login failed: {login.text}")
-
     token = login.json().get('data', {}).get('token')
     if not token:
         raise Exception(f"Login response missing token: {login.text}")
 
     # Upload to Suppy
     with open(csv_name, 'rb') as f:
-        upload = requests.post("https://portal-api.suppy.app/api/manual-integration",
-            headers={"Authorization": f"Bearer {token}"},
-            files={"file": (csv_name, f)},
-            data={"partner_id": PARTNER_ID}
-        )
-
+        upload = requests.post("https://portal-api.suppy.app/api/manual-integration", headers={"Authorization": f"Bearer {token}"}, files={"file": (csv_name, f)}, data={"partner_id": PARTNER_ID})
     if upload.status_code != 200:
         raise Exception(f"Suppy upload failed: {upload.text}")
 
     # Upload to dashboard
-    upload_url = f"{DASHBOARD_URL.rstrip('/')}/upload-log"
     with open(csv_name, 'rb') as f:
-        dashboard_upload = requests.post(
-            upload_url,
-            files={"file": (os.path.basename(csv_name), f, 'text/csv')},
-            data={"log": f"[SUCCESS] {now_str} File uploaded: {csv_name}"}
-        )
-
+        dashboard_upload = requests.post(f"{DASHBOARD_URL}/upload-log", files={"file": (os.path.basename(csv_name), f, 'text/csv')}, data={"log": f"[SUCCESS] {now_str} File uploaded: {csv_name}"})
     if dashboard_upload.status_code != 200:
         raise Exception(f"Dashboard upload failed: {dashboard_upload.status_code} - {dashboard_upload.text}")
 
-    msg = f"✅ Upload succeeded at {now_str}\nFile: {os.path.basename(csv_name)}"
-    send_telegram_message(msg)
-
+    send_telegram_message(f"✅ Upload succeeded at {now_str}\nFile: {os.path.basename(csv_name)}")
     with open("logs/integration-log.txt", "a") as log:
         log.write(f"[SUCCESS] {now_str} File uploaded: {csv_name}\n")
 
