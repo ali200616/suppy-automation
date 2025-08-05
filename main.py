@@ -70,14 +70,15 @@ try:
     if upload.status_code != 200:
         raise Exception(f"Suppy upload failed: {upload.text}")
 
-    # Upload to dashboard
-    dashboard_upload = requests.post(f"{DASHBOARD_URL}/upload-log",
-        files={"file": open(csv_name, 'rb')},
-        data={"log": f"[SUCCESS] {now} File uploaded: {csv_name}"}
-    )
+    # Upload to dashboard (fixed)
+    with open(csv_name, 'rb') as f:
+        dashboard_upload = requests.post(f"{DASHBOARD_URL}/upload-log",
+            files={"file": (csv_name, f)},
+            data={"log": f"[SUCCESS] {now} File uploaded: {csv_name}"}
+        )
 
     if dashboard_upload.status_code != 200:
-        raise Exception("Dashboard upload failed.")
+        raise Exception(f"Dashboard upload failed: {dashboard_upload.text}")
 
     msg = f"✅ Upload succeeded at {now}\nFile: {os.path.basename(csv_name)}"
     send_telegram_message(msg)
