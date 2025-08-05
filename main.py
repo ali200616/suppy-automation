@@ -1,99 +1,73 @@
 import os
-import pandas as pd
 import requests
-from datetime import datetime
-import gspread
+import pandas as pd
 from dotenv import load_dotenv
+import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from suppy_token_selenium import get_suppy_token
+from datetime import datetime
 
 load_dotenv()
 
-PARTNER_ID = os.getenv("PARTNER_ID")
+# Load env vars
 SHEET_ID = os.getenv("SHEET_ID")
 SHEET_NAME = os.getenv("SHEET_NAME")
+SUPPY_EMAIL = os.getenv("SUPPY_EMAIL")
+SUPPY_PASSWORD = os.getenv("SUPPY_PASSWORD")
+PARTNER_ID = os.getenv("PARTNER_ID")
 DASHBOARD_URL = os.getenv("DASHBOARD_URL")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-CSV_DIR = "logs"
-LOG_FILE = os.path.join(CSV_DIR, "integration-log.txt")
-os.makedirs(CSV_DIR, exist_ok=True)
+# Create logs dir if missing
+os.makedirs("logs", exist_ok=True)
 
-def send_telegram_notification(message):
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-        requests.post(url, json=payload)
-    except Exception as e:
-        print(f"Telegram error: {e}")
+try:
+    # Access Google Sheet
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+    client = gspread.authorize(creds)
+    sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
+    data = sheet.get_all_values()
+    headers, rows = data[0], data[1:]
 
-def log_and_notify(message, level="info"):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    entry = f"[{timestamp}] {message}\n"
-    with open(LOG_FILE, "a") as f:
-        f.write(entry)
-    if level in ["error", "critical", "warning", "success"]:
-        prefix = "✅" if level == "success" else "⚠️"
-        send_telegram_notification(f"{prefix} {message}")
-    print(entry.strip())
+    # Remove column C (index 2)
+    cleaned_data = [row[:2] + row[3:] for row in rows]
+    cleaned_headers = headers[:2] + headers[3:]
+    df = pd.DataFrame(cleaned_data, columns=cleaned_headers)
 
-def download_and_prepare_csv():
-    try:
-        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", [
-            "https://spreadsheets.google.com/feeds",
-            "https://www.googleapis.com/auth/drive"
-        ])
-        client = gspread.authorize(creds)
-        sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
-        data = sheet.get_all_values()
-        df = pd.DataFrame(data[1:], columns=data[0])
-        df.drop(columns=["Product Name"], inplace=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        csv_path = os.path.join(CSV_DIR, f"suppy_upload_{timestamp}.csv")
-        df.to_csv(csv_path, index=False)
-        return csv_path
-    except Exception as e:
-        log_and_notify(f"Failed to download/prepare CSV: {e}", "error")
-        return None
+    # Save CSV (preserve leading zeros)
+    now = datetime.now().strftime("%Y%m%d_%H%M%S")
+    csv_name = f"logs/upload_{now}.csv"
+    df.to_csv(csv_name, index=False)
 
-def upload_to_suppy(token, csv_path):
-    try:
-        with open(csv_path, "rb") as f:
-            files = {"file": (os.path.basename(csv_path), f)}
-            headers = {
-                "Authorization": token,
-                "portal-v2": "true"
-            }
-            res = requests.post(
-                "https://portal-api.suppy.app/api/manual-integration",
-                headers=headers,
-                files=files,
-                data={"partnerId": PARTNER_ID}
-            )
-        res.raise_for_status()
-        log_and_notify(f"CSV successfully uploaded to Suppy: {os.path.basename(csv_path)}", "success")
-    except Exception as e:
-        log_and_notify(f"Failed to upload to Suppy: {e}", "error")
+    # Suppy API login
+    login = requests.post("https://portal-api.suppy.app/api/users/login", json={
+        "email": SUPPY_EMAIL,
+        "password": SUPPY_PASSWORD
+    })
+    token = login.json()['data']['token']
 
-def upload_to_dashboard(csv_path):
-    try:
-        with open(csv_path, "rb") as f:
-            files = {"file": f}
-            res = requests.post(DASHBOARD_URL, files=files)
-            res.raise_for_status()
-            log_and_notify(f"CSV uploaded to dashboard: {os.path.basename(csv_path)}")
-    except Exception as e:
-        log_and_notify(f"Failed to upload to dashboard: {e}", "warning")
+    # Upload to Suppy
+    with open(csv_name, 'rb') as f:
+        r = requests.post("https://portal-api.suppy.app/api/manual-integration",
+            headers={"Authorization": f"Bearer {token}"},
+            files={"file": (csv_name, f)},
+            data={"partner_id": PARTNER_ID}
+        )
+    r.raise_for_status()
 
-def run():
-    csv_path = download_and_prepare_csv()
-    if not csv_path:
-        return
-    token = get_suppy_token()
-    if not token:
-        return
-    upload_to_suppy(token, csv_path)
-    upload_to_dashboard(csv_path)
+    # Upload to dashboard
+    requests.post(f"{DASHBOARD_URL}", files={"file": open(csv_name, 'rb')}, data={"log": f"Upload success: {csv_name}"})
 
-run()
+    # Telegram success message
+    msg = f"✅ Upload succeeded at {now}\nFile: {os.path.basename(csv_name)}"
+    requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}")
+
+    with open("logs/integration-log.txt", "a") as log:
+        log.write(f"[SUCCESS] {now} File uploaded: {csv_name}\n")
+
+except Exception as e:
+    err = f"❌ Upload failed: {str(e)}"
+    requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={err}")
+    with open("logs/integration-log.txt", "a") as log:
+        log.write(f"[ERROR] {datetime.now()} {str(e)}\n")
