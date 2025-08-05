@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
-from hashlib import sha256
 import pytz
 
 load_dotenv()
@@ -39,19 +38,6 @@ try:
     data = sheet.get_all_values()
     headers, rows = data[0], data[1:]
 
-    # Detect edits
-    sheet_string = "\n".join(["".join(row) for row in rows])
-    current_hash = sha256(sheet_string.encode()).hexdigest()
-    LAST_HASH_FILE = "logs/last_sheet_hash.txt"
-    last_hash = ""
-    if os.path.exists(LAST_HASH_FILE):
-        with open(LAST_HASH_FILE, "r") as f:
-            last_hash = f.read().strip()
-    if current_hash != last_hash:
-        send_telegram_message(f"✏️ Google Sheet was edited at {now_lebanon().strftime('%Y-%m-%d %H:%M:%S')}")
-        with open(LAST_HASH_FILE, "w") as f:
-            f.write(current_hash)
-
     # Remove column C
     cleaned_data = [row[:2] + row[3:] for row in rows]
     cleaned_headers = headers[:2] + headers[3:]
@@ -72,16 +58,28 @@ try:
 
     # Upload to Suppy
     with open(csv_name, 'rb') as f:
-        upload = requests.post("https://portal-api.suppy.app/api/manual-integration", headers={"Authorization": f"Bearer {token}"}, files={"file": (csv_name, f)}, data={"partner_id": PARTNER_ID})
+        upload = requests.post(
+            "https://portal-api.suppy.app/api/manual-integration",
+            headers={"Authorization": f"Bearer {token}"},
+            files={"file": (csv_name, f)},
+            data={"partner_id": PARTNER_ID}
+        )
     if upload.status_code != 200:
         raise Exception(f"Suppy upload failed: {upload.text}")
 
     # Upload to dashboard
     with open(csv_name, 'rb') as f:
-        dashboard_upload = requests.post(f"{DASHBOARD_URL}/upload-log", files={"file": (os.path.basename(csv_name), f, 'text/csv')}, data={"log": f"[SUCCESS] {now_str} File uploaded: {csv_name}"})
+        dashboard_upload = requests.post(
+            f"{DASHBOARD_URL}/upload-log",
+            files={"file": (os.path.basename(csv_name), f, 'text/csv')},
+            data={"log": f"[SUCCESS] {now_str} File uploaded: {csv_name}"}
+        )
+    print("📤 Dashboard upload status:", dashboard_upload.status_code)
+    print("📤 Dashboard response:", dashboard_upload.text)
     if dashboard_upload.status_code != 200:
         raise Exception(f"Dashboard upload failed: {dashboard_upload.status_code} - {dashboard_upload.text}")
 
+    # Success
     send_telegram_message(f"✅ Upload succeeded at {now_str}\nFile: {os.path.basename(csv_name)}")
     with open("logs/integration-log.txt", "a") as log:
         log.write(f"[SUCCESS] {now_str} File uploaded: {csv_name}\n")
