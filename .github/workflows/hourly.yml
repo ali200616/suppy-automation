@@ -2,7 +2,11 @@ name: Suppy Automation
 
 on:
   schedule:
+<<<<<<< HEAD
     - cron: '*/15 * * * *'
+=======
+    - cron: '*/35 * * * *'
+>>>>>>> a07983acc5d9c578dec046e100beda2467dc7a5a
   workflow_dispatch:
 
 jobs:
