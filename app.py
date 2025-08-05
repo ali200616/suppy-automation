@@ -6,6 +6,7 @@ import logging
 from dotenv import load_dotenv
 from datetime import datetime
 import pytz
+import asyncio  # ✅ added for proper async execution
 
 load_dotenv()
 
@@ -74,7 +75,8 @@ def upload_log():
 
 @app.post('/telegram-webhook')
 async def webhook():
-    update = Update.de_json(await request.get_json(), application.bot)
+    # ✅ FIXED: removed 'await' from request.get_json()
+    update = Update.de_json(request.get_json(), application.bot)
     await application.process_update(update)
     return jsonify(success=True)
 
@@ -82,5 +84,7 @@ if __name__ == '__main__':
     async def post_init(app):
         await application.bot.set_webhook(f"{DASHBOARD_URL}/telegram-webhook")
     application.post_init = post_init
-    application.initialize()
+
+    # ✅ FIXED: properly await initialization
+    asyncio.run(application.initialize())
     app.run(host='0.0.0.0', port=5000)
