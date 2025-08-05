@@ -21,8 +21,14 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 # Create logs dir if missing
 os.makedirs("logs", exist_ok=True)
 
+def send_telegram_message(text):
+    requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", params={
+        "chat_id": CHAT_ID,
+        "text": text
+    })
+
 try:
-    # Access Google Sheet
+    # Load Google Sheet
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
     client = gspread.authorize(creds)
@@ -35,39 +41,52 @@ try:
     cleaned_headers = headers[:2] + headers[3:]
     df = pd.DataFrame(cleaned_data, columns=cleaned_headers)
 
-    # Save CSV (preserve leading zeros)
+    # Save CSV
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
     csv_name = f"logs/upload_{now}.csv"
     df.to_csv(csv_name, index=False)
 
-    # Suppy API login
+    # Suppy login
     login = requests.post("https://portal-api.suppy.app/api/users/login", json={
         "email": SUPPY_EMAIL,
         "password": SUPPY_PASSWORD
     })
-    token = login.json()['data']['token']
+
+    if login.status_code != 200:
+        raise Exception(f"Suppy login failed: {login.text}")
+
+    token = login.json().get('data', {}).get('token')
+    if not token:
+        raise Exception(f"Login response missing token: {login.text}")
 
     # Upload to Suppy
     with open(csv_name, 'rb') as f:
-        r = requests.post("https://portal-api.suppy.app/api/manual-integration",
+        upload = requests.post("https://portal-api.suppy.app/api/manual-integration",
             headers={"Authorization": f"Bearer {token}"},
             files={"file": (csv_name, f)},
             data={"partner_id": PARTNER_ID}
         )
-    r.raise_for_status()
+
+    if upload.status_code != 200:
+        raise Exception(f"Suppy upload failed: {upload.text}")
 
     # Upload to dashboard
-    requests.post(f"{DASHBOARD_URL}", files={"file": open(csv_name, 'rb')}, data={"log": f"Upload success: {csv_name}"})
+    dashboard_upload = requests.post(f"{DASHBOARD_URL}/upload-log",
+        files={"file": open(csv_name, 'rb')},
+        data={"log": f"[SUCCESS] {now} File uploaded: {csv_name}"}
+    )
 
-    # Telegram success message
+    if dashboard_upload.status_code != 200:
+        raise Exception("Dashboard upload failed.")
+
     msg = f"✅ Upload succeeded at {now}\nFile: {os.path.basename(csv_name)}"
-    requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}")
+    send_telegram_message(msg)
 
     with open("logs/integration-log.txt", "a") as log:
         log.write(f"[SUCCESS] {now} File uploaded: {csv_name}\n")
 
 except Exception as e:
     err = f"❌ Upload failed: {str(e)}"
-    requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={err}")
+    send_telegram_message(err)
     with open("logs/integration-log.txt", "a") as log:
         log.write(f"[ERROR] {datetime.now()} {str(e)}\n")

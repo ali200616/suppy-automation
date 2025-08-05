@@ -74,6 +74,21 @@ def dashboard():
 def download(filename):
     return send_from_directory('logs', filename, as_attachment=True)
 
+@app.route('/upload-log', methods=['POST'])
+def receive_upload():
+    file = request.files.get('file')
+    log_entry = request.form.get('log')
+
+    if file:
+        path = os.path.join("logs", file.filename)
+        file.save(path)
+
+    if log_entry:
+        with open("logs/integration-log.txt", "a") as log:
+            log.write(log_entry + "\n")
+
+    return jsonify(success=True)
+
 @app.post('/telegram-webhook')
 async def webhook():
     update = Update.de_json(await request.get_json(), application.bot)
