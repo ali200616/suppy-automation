@@ -32,8 +32,7 @@ def now_lebanon():
 try:
     # Load Google Sheet
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    CREDENTIALS_PATH = os.path.join(BASE_DIR, 'credentials.json')
+    CREDENTIALS_PATH = 'credentials.json'
     creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
