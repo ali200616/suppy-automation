@@ -33,15 +33,6 @@ try:
     # Load Google Sheet
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     CREDENTIALS_PATH = 'credentials.json'
-
-    # ✅ Create credentials.json from env var
-    import json
-    credentials_content = os.getenv("CREDENTIALS_JSON")
-    if not credentials_content:
-        raise Exception("Missing CREDENTIALS_JSON environment variable.")
-    with open(CREDENTIALS_PATH, "w") as f:
-        f.write(credentials_content)
-
     creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
