@@ -19,6 +19,10 @@ DASHBOARD_URL = os.getenv("DASHBOARD_URL")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
+# 🔧 NEW (needed by the new modal upload)
+BRANCH_ID = os.getenv("BRANCH_ID")            # e.g. 136
+MI_TYPE = os.getenv("MI_TYPE", "0")           # UI showed 0; keep configurable
+
 # Create logs dir
 os.makedirs("logs", exist_ok=True)
 
@@ -50,30 +54,45 @@ try:
     df.to_csv(csv_name, index=False)
 
     # Login to Suppy
-    login = requests.post("https://portal-api.suppy.app/api/users/login", json={"username": SUPPY_EMAIL, "password": SUPPY_PASSWORD})
+    login = requests.post(
+        "https://portal-api.suppy.app/api/users/login",
+        json={"username": SUPPY_EMAIL, "password": SUPPY_PASSWORD},
+        timeout=60
+    )
     if login.status_code != 200:
         raise Exception(f"Suppy login failed: {login.text}")
     token = login.json().get('data', {}).get('token')
     if not token:
         raise Exception(f"Login response missing token: {login.text}")
 
-    # Upload to Suppy
+    # ⬆️ Everything above unchanged
+    # ⬇️ FIXED: upload to new modal-backed endpoint (multipart with branchId/partnerId/type + 'file')
     with open(csv_name, 'rb') as f:
         upload = requests.post(
             "https://portal-api.suppy.app/api/manual-integration",
-            headers={"Authorization": f"Bearer {token}"},
-            files={"file": (csv_name, f)},
-            data={"partner_id": PARTNER_ID}
+            headers={
+                "Authorization": f"Bearer {token}",
+                "portal-v2": "true",
+                "Accept": "application/json"
+            },
+            data={
+                "branchId": str(BRANCH_ID) if BRANCH_ID is not None else "",
+                "partnerId": str(PARTNER_ID) if PARTNER_ID is not None else "",
+                "type": str(MI_TYPE),
+            },
+            files={"file": (os.path.basename(csv_name), f, "text/csv")},
+            timeout=120
         )
     if upload.status_code != 200:
-        raise Exception(f"Suppy upload failed: {upload.text}")
+        raise Exception(f"Suppy upload failed: {upload.status_code} {upload.text}")
 
     # Upload to dashboard
     with open(csv_name, 'rb') as f:
         dashboard_upload = requests.post(
             f"{DASHBOARD_URL}/upload-log",
             files={"file": (os.path.basename(csv_name), f, 'text/csv')},
-            data={"log": f"[SUCCESS] {now_str} File uploaded: {csv_name}"}
+            data={"log": f"[SUCCESS] {now_str} File uploaded: {csv_name}"},
+            timeout=60
         )
     print("📤 Dashboard upload status:", dashboard_upload.status_code)
     print("📤 Dashboard response:", dashboard_upload.text)
