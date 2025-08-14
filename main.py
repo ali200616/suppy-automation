@@ -350,6 +350,7 @@ if __name__ == "__main__":
         log_line("INFO", f"Suppy MI response chunks: {json.dumps(mi_body)[:1200]}")
 
         upload_to_dashboard(csv_path)
+        post_dashboard_status("success", "Upload succeeded", csv_path.name)   # ← ADD THIS
 
         msg = f"✅ Upload completed\nFile: {csv_path.name}\nRows: {len(df)}\nTime: {now_lebanon()}"
         send_telegram_message(msg)
@@ -359,4 +360,5 @@ if __name__ == "__main__":
         err = f"❌ Upload failed: {e}"
         send_telegram_message(err)
         log_line("ERROR", str(e))
+        post_dashboard_status("failed", str(e))  # ← ADD THIS
         raise

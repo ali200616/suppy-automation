@@ -45,6 +45,7 @@
     </header>
 
     <div class="grid">
+      <!-- Run Log -->
       <section class="card">
         <h2>Run Log</h2>
         {% if lines and lines|length > 0 %}
@@ -62,29 +63,30 @@
         {% endif %}
       </section>
 
+      <!-- Uploaded CSVs -->
       <section class="card">
         <h2>Uploaded CSVs</h2>
         {% if csvs and csvs|length > 0 %}
-        <table class="table">
-          <thead><tr><th>File</th><th>Size</th><th>Uploaded</th><th></th></tr></thead>
-          <tbody>
-            {% for f in csvs %}
-            <tr>
-              <td class="mono">{{ f['name'] }}</td>
-              <td>{{ f['size_kb'] }} KB</td>
-              <td class="muted">{{ f['mtime'] }}</td>
-              <td><a class="btn" href="/download/{{ f['name'] }}">Download</a></td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+          <table class="table">
+            <thead><tr><th>File</th><th>Size</th><th>Uploaded</th><th></th></tr></thead>
+            <tbody>
+              {% for f in csvs %}
+              <tr>
+                <td class="mono">{{ f['name'] }}</td>
+                <td>{{ f['size_kb'] }} KB</td>
+                <td class="muted">{{ f['mtime'] }}</td>
+                <td><a class="btn" href="/download/{{ f['name'] }}">Download</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         {% else %}
           <div class="muted">No CSV files found.</div>
         {% endif %}
       </section>
     </div>
 
-    <footer>© {{ last_updated[:4] }} Al Forno • Suppy Automation</footer>
+    <footer>© {{ year }} Al Forno • Suppy Automation</footer>
   </div>
 
   <script>setTimeout(()=>location.reload(), 20000);</script>
