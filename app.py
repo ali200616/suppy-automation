@@ -8,7 +8,7 @@ from flask import Flask, request, render_template, send_from_directory, abort, j
 # --- Paths ---
 BASE = Path(__file__).resolve().parent
 STATIC = BASE / "static"
-TEMPLATES = BASE              # index.html sits next to this file
+TEMPLATES = BASE / "templates"  # index.html sits next to this file
 UPLOADS = BASE / "uploads"
 LOGS = BASE / "logs"
 UPLOADS.mkdir(parents=True, exist_ok=True)
