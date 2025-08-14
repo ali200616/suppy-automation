@@ -310,21 +310,30 @@ def upload_to_suppy_mi(csv_path: Path) -> dict:
 
     return {"chunks": chunks}
 
+# Add near your other helpers:
 def upload_to_dashboard(csv_path: Path):
     if not DASHBOARD_URL:
         return
     try:
-        resp = requests.post(
+        requests.post(
             f"{DASHBOARD_URL.rstrip('/')}/upload",
             files={"file": (csv_path.name, open(csv_path, "rb"), "text/csv")},
-            data={"log": f"[SUCCESS] {now_lebanon()} File uploaded: {csv_path.name}"},
             timeout=60,
         )
-        if resp.status_code != 200:
-            raise RuntimeError(f"Dashboard upload HTTP {resp.status_code}: {resp.text[:500]}")
-        log_line("INFO", f"Dashboard accepted {csv_path.name}")
-    except Exception as e:
-        log_line("WARN", f"Dashboard upload failed: {e}")
+    except Exception:
+        pass  # don't spam failures here; we log status separately
+
+def post_dashboard_status(status: str, message: str, filename: str = ""):
+    if not DASHBOARD_URL:
+        return
+    try:
+        requests.post(
+            f"{DASHBOARD_URL.rstrip('/')}/log",
+            json={"status": status, "message": message, "filename": filename},
+            timeout=30,
+        )
+    except Exception:
+        pass
 
 # ================== Main ==================
 if __name__ == "__main__":

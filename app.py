@@ -1,94 +1,100 @@
-from flask import Flask, request, jsonify, render_template, send_from_directory
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
 import os
-import logging
-from dotenv import load_dotenv
+from pathlib import Path
 from datetime import datetime
 import pytz
-import asyncio  # ✅ added for proper async execution
-from subprocess import run  # ✅ added to support /run endpoint
+from flask import Flask, request, render_template, send_from_directory, abort, jsonify
 
-load_dotenv()
+# --- Paths ---
+BASE = Path(os.path.dirname(__file__) or ".").resolve()
+STATIC = BASE / "static"
+TEMPLATES = BASE  # index.html in project root (same as before)
+UPLOADS = BASE / "uploads"
+LOGS = BASE / "logs"
+UPLOADS.mkdir(parents=True, exist_ok=True)
+LOGS.mkdir(parents=True, exist_ok=True)
+STATIC.mkdir(parents=True, exist_ok=True)
 
-app = Flask(__name__)
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-DASHBOARD_URL = os.getenv('DASHBOARD_URL')
+STATUS_LOG = LOGS / "status.log"
 
-application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# --- App ---
+app = Flask(__name__, static_folder=str(STATIC), template_folder=str(TEMPLATES))
 
-def now_lebanon():
-    return datetime.now(pytz.timezone("Asia/Beirut"))
+def now_beirut():
+    return datetime.now(pytz.timezone("Asia/Beirut")).strftime("%Y-%m-%d %H:%M:%S")
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('🚀 Suppy Automation Bot is running!')
+def append_status(status: str, msg: str):
+    """
+    EXACTLY one line:
+    [SUCCESS|FAILED] yyyy-mm-dd HH:MM:SS - message
+    """
+    line = f"[{status.upper()}] {now_beirut()} - {msg}\n"
+    prev = STATUS_LOG.read_text(encoding="utf-8") if STATUS_LOG.exists() else ""
+    STATUS_LOG.write_text(prev + line, encoding="utf-8")
 
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        with open('logs/integration-log.txt', 'r') as f:
-            last_line = f.readlines()[-1]
-        await update.message.reply_text(f"📊 Last log entry:\n{last_line}")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error: {str(e)}")
+def get_status_lines(n=100):
+    if not STATUS_LOG.exists():
+        return []
+    lines = STATUS_LOG.read_text(encoding="utf-8").splitlines()
+    return lines[-n:]
 
-async def logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        with open("logs/integration-log.txt", "r") as f:
-            last_lines = f.readlines()[-50:]
-        await update.message.reply_text("📄 Last 50 log lines:\n" + ''.join(last_lines[-10:]))
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error: {str(e)}")
+def list_csvs():
+    items = []
+    for p in sorted(UPLOADS.glob("*.csv"), key=lambda x: x.stat().st_mtime, reverse=True):
+        stat = p.stat()
+        size_kb = max(1, stat.st_size // 1024)
+        mtime = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        items.append({"name": p.name, "size_kb": size_kb, "mtime": mtime})
+    return items
 
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("status", status))
-application.add_handler(CommandHandler("logs", logs))
+@app.get("/")
+def index():
+    return render_template(
+        "index.html",
+        lines=get_status_lines(100),
+        csvs=list_csvs(),
+        last_updated=now_beirut()
+    )
 
-@app.route('/')
-def dashboard():
-    try:
-        with open("logs/integration-log.txt", "r") as f:
-            logs = f.readlines()[-50:]
-    except:
-        logs = []
-    try:
-        csvs = sorted([f for f in os.listdir("logs") if f.endswith(".csv")], reverse=True)
-    except:
-        csvs = []
-    return render_template("index.html", logs=logs, csvs=csvs, last_updated=now_lebanon().strftime("%Y-%m-%d %H:%M:%S"))
+@app.post("/upload")
+def upload_csv():
+    """
+    Saves CSV file; status is NOT written here (script posts to /log).
+    """
+    if "file" not in request.files:
+        abort(400, "No file")
+    f = request.files["file"]
+    if not f.filename.lower().endswith(".csv"):
+        abort(400, "Only .csv allowed")
+    dest = UPLOADS / f.filename
+    f.save(dest)
+    return "OK", 200
 
-@app.route('/logs/<path:filename>')
+@app.post("/log")
+def post_log():
+    """
+    Accepts a single-line status from your script.
+    JSON: {"status":"success"|"failed","message":"...","filename":"..."}
+    """
+    data = request.get_json(silent=True) or {}
+    status = str(data.get("status", "")).lower()
+    message = str(data.get("message", "")).strip()
+    filename = str(data.get("filename", "")).strip()
+    if status not in ("success", "failed"):
+        abort(400, "status must be success or failed")
+    suffix = f" file={filename}" if filename else ""
+    append_status(status, f"{message}{suffix}")
+    return jsonify({"ok": True})
+
+@app.get("/download/<path:filename>")
 def download(filename):
-    return send_from_directory('logs', filename, as_attachment=True)
+    p = UPLOADS / filename
+    if not p.exists():
+        abort(404)
+    return send_from_directory(str(UPLOADS), filename, as_attachment=True)
 
-@app.route('/upload-log', methods=['POST'])
-def upload_log():
-    file = request.files.get('file')
-    log_entry = request.form.get('log')
-    os.makedirs("logs", exist_ok=True)
-    if file:
-        file.save(os.path.join("logs", file.filename))
-    if log_entry:
-        with open("logs/integration-log.txt", "a") as log_file:
-            log_file.write(log_entry + "\n")
-    return jsonify(success=True)
+@app.get("/health")
+def health():
+    return {"ok": True, "time": now_beirut()}
 
-@app.route('/run', methods=['GET'])
-def run_script():
-    result = run(['python', 'main.py'])
-    return "Script executed", 200
-
-@app.post('/telegram-webhook')
-async def webhook():
-    update = Update.de_json(request.get_json(), application.bot)
-    await application.process_update(update)
-    return jsonify(success=True)
-
-if __name__ == '__main__':
-    async def post_init(app):
-        await application.bot.set_webhook(f"{DASHBOARD_URL}/telegram-webhook")
-    application.post_init = post_init
-
-    asyncio.run(application.initialize())
-    app.run(host='0.0.0.0', port=5000)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
