@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Suppy Integration Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="/static/logo.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root{--bg:#0e1116;--card:#141a23;--ink:#eef2fb;--muted:#95a1b2;--brand:#00e0a4;--brand2:#7cf9cb;--bad:#ff6b6b;--stroke:#1f2733;--chip:#1a2230;--shadow:0 20px 45px rgba(0,0,0,.35)}
+    *{box-sizing:border-box} body{margin:0;font-family:'Inter',system-ui,Segoe UI,Roboto,Arial;background:radial-gradient(1000px 600px at 10% -10%, rgba(0,224,164,.12), transparent 60%),radial-gradient(900px 450px at 110% 10%, rgba(124,249,203,.12), transparent 60%),var(--bg);color:var(--ink)}
+    .wrap{max-width:1100px;margin:36px auto;padding:0 18px}
+    header{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+    header img{height:44px;width:auto;filter:drop-shadow(0 2px 10px rgba(0,224,164,.15))}
+    .title{font-weight:800;font-size:24px;letter-spacing:.2px}
+    .sub{color:var(--muted);font-size:13px}
+    .pill{margin-left:auto;background:linear-gradient(90deg, rgba(0,224,164,.13), rgba(124,249,203,.13));border:1px solid rgba(0,224,164,.25);color:#cffff0;padding:8px 12px;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+    .grid{display:grid;grid-template-columns:1.3fr .7fr;gap:18px} @media (max-width:920px){.grid{grid-template-columns:1fr}}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,.02), transparent),var(--card);border:1px solid var(--stroke);border-radius:16px;box-shadow:var(--shadow);padding:16px}
+    .card h2{margin:0 0 12px;font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
+    .log{display:grid;gap:10px;max-height:58vh;overflow:auto;padding-right:4px}
+    .row{display:flex;gap:10px;align-items:center;background:var(--chip);border:1px solid var(--stroke);border-radius:12px;padding:10px 12px}
+    .dot{width:10px;height:10px;border-radius:50%}
+    .ok{background:linear-gradient(180deg, var(--brand), var(--brand2))}
+    .bad{background:linear-gradient(180deg, #ff8a8a, var(--bad))}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+    .table{width:100%;border-collapse:separate;border-spacing:0}
+    .table th,.table td{padding:12px 12px;border-bottom:1px solid var(--stroke);font-size:13px;text-align:left}
+    .table th{color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+    .table tr:hover td{background:#182131}
+    .btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(90deg, var(--brand), var(--brand2));color:#0b0f14;text-decoration:none;border-radius:10px;padding:8px 12px;font-weight:700}
+    .muted{color:var(--muted)}
+    footer{margin:20px 0 0;color:var(--muted);font-size:12px;text-align:center;opacity:.75}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      {% if has_logo %}<img src="/static/logo.png" alt="Logo" />{% endif %}
+      <div>
+        <div class="title">Suppy Integration Dashboard</div>
+        <div class="sub">Last Updated: {{ last_updated }}</div>
+      </div>
+      <div class="pill">Live</div>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Run Log</h2>
+        {% if lines and lines|length > 0 %}
+        <div class="log">
+          {% for line in lines|reverse %}
+            {% set good = '[SUCCESS]' in line %}
+            <div class="row">
+              <div class="dot {{ 'ok' if good else 'bad' }}"></div>
+              <div class="mono">{{ line }}</div>
+            </div>
+          {% endfor %}
+        </div>
+        {% else %}
+          <div class="muted">No runs yet.</div>
+        {% endif %}
+      </section>
+
+      <section class="card">
+        <h2>Uploaded CSVs</h2>
+        {% if csvs and csvs|length > 0 %}
+        <table class="table">
+          <thead><tr><th>File</th><th>Size</th><th>Uploaded</th><th></th></tr></thead>
+          <tbody>
+            {% for f in csvs %}
+            <tr>
+              <td class="mono">{{ f['name'] }}</td>
+              <td>{{ f['size_kb'] }} KB</td>
+              <td class="muted">{{ f['mtime'] }}</td>
+              <td><a class="btn" href="/download/{{ f['name'] }}">Download</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <div class="muted">No CSV files found.</div>
+        {% endif %}
+      </section>
+    </div>
+
+    <footer>© {{ last_updated[:4] }} Al Forno • Suppy Automation</footer>
+  </div>
+
+  <script>setTimeout(()=>location.reload(), 20000);</script>
+</body>
+</html>

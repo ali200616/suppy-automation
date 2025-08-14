@@ -7,7 +7,7 @@ from flask import Flask, request, render_template, send_from_directory, abort, j
 # --- Paths ---
 BASE = Path(os.path.dirname(__file__) or ".").resolve()
 STATIC = BASE / "static"
-TEMPLATES = BASE  # index.html in project root (same as before)
+TEMPLATES = BASE          # index.html sits next to this file
 UPLOADS = BASE / "uploads"
 LOGS = BASE / "logs"
 UPLOADS.mkdir(parents=True, exist_ok=True)
@@ -16,17 +16,13 @@ STATIC.mkdir(parents=True, exist_ok=True)
 
 STATUS_LOG = LOGS / "status.log"
 
-# --- App ---
 app = Flask(__name__, static_folder=str(STATIC), template_folder=str(TEMPLATES))
 
 def now_beirut():
     return datetime.now(pytz.timezone("Asia/Beirut")).strftime("%Y-%m-%d %H:%M:%S")
 
 def append_status(status: str, msg: str):
-    """
-    EXACTLY one line:
-    [SUCCESS|FAILED] yyyy-mm-dd HH:MM:SS - message
-    """
+    """ONE line only: [SUCCESS|FAILED] yyyy-mm-dd HH:MM:SS - message"""
     line = f"[{status.upper()}] {now_beirut()} - {msg}\n"
     prev = STATUS_LOG.read_text(encoding="utf-8") if STATUS_LOG.exists() else ""
     STATUS_LOG.write_text(prev + line, encoding="utf-8")
@@ -41,9 +37,11 @@ def list_csvs():
     items = []
     for p in sorted(UPLOADS.glob("*.csv"), key=lambda x: x.stat().st_mtime, reverse=True):
         stat = p.stat()
-        size_kb = max(1, stat.st_size // 1024)
-        mtime = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-        items.append({"name": p.name, "size_kb": size_kb, "mtime": mtime})
+        items.append({
+            "name": p.name,
+            "size_kb": max(1, stat.st_size // 1024),
+            "mtime": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+        })
     return items
 
 @app.get("/")
@@ -52,14 +50,12 @@ def index():
         "index.html",
         lines=get_status_lines(100),
         csvs=list_csvs(),
-        last_updated=now_beirut()
+        last_updated=now_beirut(),
+        has_logo=(STATIC / "logo.png").exists()
     )
 
 @app.post("/upload")
 def upload_csv():
-    """
-    Saves CSV file; status is NOT written here (script posts to /log).
-    """
     if "file" not in request.files:
         abort(400, "No file")
     f = request.files["file"]
@@ -71,10 +67,6 @@ def upload_csv():
 
 @app.post("/log")
 def post_log():
-    """
-    Accepts a single-line status from your script.
-    JSON: {"status":"success"|"failed","message":"...","filename":"..."}
-    """
     data = request.get_json(silent=True) or {}
     status = str(data.get("status", "")).lower()
     message = str(data.get("message", "")).strip()
