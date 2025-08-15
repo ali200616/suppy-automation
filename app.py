@@ -3,6 +3,7 @@ from pathlib import Path
 from datetime import datetime
 import pytz
 import secrets
+import re
 
 from flask import (
     Flask, request, render_template, abort, jsonify,
@@ -122,10 +123,12 @@ def append_status_line(status, msg):
 def list_csvs():
     items = []
     for p in sorted(UPLOADS.glob("*.csv"), key=lambda x: x.stat().st_mtime, reverse=True):
+        mtime_utc = datetime.fromtimestamp(p.stat().st_mtime, tz=pytz.UTC)
+        mtime_local = mtime_utc.astimezone(TZ)
         items.append({
             "name": p.name,
             "size_kb": max(1, p.stat().st_size // 1024),
-            "mtime": datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+            "mtime": mtime_local.strftime("%Y-%m-%d %H:%M:%S"),
         })
     return items
 
@@ -162,11 +165,91 @@ def debug_env():
 def home():
     return render_template(
         "home.html",
-        csvs=list_csvs(),
-        lines=_read_status_lines(),
+        entries=_build_activity_entries(),
         year=datetime.now().year,
         active="home"
     )
+
+TS_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\b")
+
+def _slug(s: str) -> str:
+    return re.sub(r"[^0-9A-Za-z]+", "-", s).strip("-") or "run"
+
+def _parse_level(line: str) -> str:
+    if "[ERROR]" in line or "[FAILED]" in line:
+        return "error"
+    if "[SUCCESS]" in line:
+        return "success"
+    return "info"  # includes "Job started" or generic info
+
+def _group_runs(lines: list[str]):
+    """
+    Returns a list of runs:
+      [{"slug": "...", "start_idx": i, "end_idx": j, "lines": [...]}, ...]
+    Each run is from 'Job started' to the line before the next 'Job started'.
+    """
+    # find start indices
+    starts = []
+    for idx, ln in enumerate(lines):
+        if "Job started" in ln:
+            ts = TS_RE.search(ln)
+            key = ts.group(0) if ts else f"idx-{idx}"
+            starts.append((idx, key, _slug(key)))
+    # if no explicit starts, treat all as one run
+    if not starts:
+        return [{"slug": "run", "start_idx": 0, "end_idx": len(lines), "lines": lines}]
+
+    runs = []
+    for i, (start_idx, key, slug) in enumerate(starts):
+        end_idx = starts[i+1][0] if i+1 < len(starts) else len(lines)
+        runs.append({
+            "slug": slug,
+            "key": key,
+            "start_idx": start_idx,
+            "end_idx": end_idx,
+            "lines": lines[start_idx:end_idx]
+        })
+    return runs
+
+def _build_activity_entries():
+    """
+    Build minimal entries for Overview:
+      - all SUCCESS / ERROR lines
+      - the single 'Job started' line for its run
+    Each entry include link slug for its run.
+    """
+    raw = _read_status_lines(limit=400)
+    runs = _group_runs(raw)
+
+    entries = []
+    for r in runs:
+        # one 'Job started' if present
+        for ln in r["lines"]:
+            if "Job started" in ln:
+                ts = TS_RE.search(ln)
+                entries.append({
+                    "ts": ts.group(0) if ts else "",
+                    "level": "info",
+                    "msg": ln.split(" - ", 1)[-1].strip(),
+                    "run": r["slug"]
+                })
+                break
+
+        # all success/error in that run
+        for ln in r["lines"]:
+            lvl = _parse_level(ln)
+            if lvl in ("success", "error"):
+                ts = TS_RE.search(ln)
+                entries.append({
+                    "ts": ts.group(0) if ts else "",
+                    "level": lvl,
+                    "msg": ln.split(" - ", 1)[-1].strip(),
+                    "run": r["slug"]
+                })
+
+    # newest first
+    entries.sort(key=lambda e: e["ts"], reverse=True)
+    return entries
 
 @app.route("/files")
 @login_required
@@ -193,6 +276,14 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for("home"))
+
+@app.route("/logs")
+def logs():
+    # show more lines here if you want (e.g., 1000)
+    return render_template("logs.html",
+                           lines=_read_status_lines(limit=1000),
+                           year=datetime.now().year,
+                           active="logs")
 
 # ================== Routes: Profile ==================
 @app.route("/profile", methods=["GET","POST"])
@@ -403,11 +494,24 @@ def download(filename):
 
 @app.route("/api/status")
 def api_status():
-    return jsonify({"ok": True, "lines": _read_status_lines()})
+    return jsonify({"ok": True, "entries": _build_activity_entries()})
 
 @app.route("/api/csvs")
 def api_csvs():
     return jsonify({"ok": True, "items": list_csvs()})
+
+@app.route("/log/<run_slug>")
+def log_run(run_slug):
+    lines = _read_status_lines(limit=1000)
+    for run in _group_runs(lines):
+        if run["slug"] == run_slug:
+            return render_template(
+                "run_log.html",
+                run=run,
+                year=datetime.now().year,
+                active="home"
+            )
+    abort(404)
 
 # ================== Misc ==================
 @app.route("/contact")

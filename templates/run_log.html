@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Run log • Al Forno App Portal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="{{ url_for('static', filename='logo.png') }}" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    body{margin:0;font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;color:#eaf1fb;background:#0c1117}
+    .wrap{max-width:900px;margin:0 auto;padding:20px}
+    .btn{display:inline-block;padding:8px 12px;border-radius:10px;border:1px solid #18202b;background:#0e1624;color:#eaf1fb;text-decoration:none;font-weight:700}
+    .card{margin-top:14px;border:1px solid #18202b;border-radius:14px;padding:14px;background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02))}
+    .mono{font-family:ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
+    .line{padding:6px 8px;border-bottom:1px solid #18202b}
+    .line:last-child{border-bottom:0}
+    .muted{color:#97a7c2}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="btn" href="{{ url_for('home') }}">← Back to Overview</a>
+    <div class="card">
+      <div class="muted">Run ID: {{ run.slug }}</div>
+      <div class="mono">
+        {% for ln in run.lines %}
+          <div class="line">{{ ln }}</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</body>
+</html>
