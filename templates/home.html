@@ -38,16 +38,22 @@
     .hamb{display:none}
     @media (max-width:900px){main{grid-template-columns:1fr}nav{position:fixed;top:64px;left:0;right:0;background:rgba(16,23,33,.98);padding:10px 14px;transform:translateY(-140%);transition:transform .2s ease}nav.open{transform:translateY(0)}.hamb{display:inline-flex}}
     footer{margin:24px 0;color:var(--muted);font-size:12px;text-align:center}
-    .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:10px}.pill{background:#0e1624;border:1px solid var(--stroke);border-radius:10px;padding:6px 10px;font-weight:700}
+
+    .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+    .pill{background:#0e1624;border:1px solid var(--stroke);border-radius:10px;padding:6px 10px;font-weight:700;cursor:pointer}
+    .pill.active{outline:2px solid #00e0a4}
+    .search{flex:0 0 320px;background:#0e1624;border:1px solid var(--stroke);border-radius:10px;padding:8px 10px;color:var(--ink)}
     .loglist{display:flex;flex-direction:column;gap:10px}
-    .logrow{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--stroke);background:rgba(255,255,255,.02);border-radius:12px}
+    .logrow{display:grid;grid-template-columns:110px 160px 1fr auto;gap:12px;align-items:center;
+      padding:10px 12px;border:1px solid var(--stroke);background:rgba(255,255,255,.02);border-radius:12px}
     .logrow:hover{background:#121a28}
-    .badge{font-weight:800;font-size:11px;letter-spacing:.03em;border-radius:999px;padding:3px 8px}
+    .badge{justify-self:start;text-align:center;font-weight:800;font-size:11px;letter-spacing:.03em;border-radius:999px;padding:3px 8px}
     .badge.success{background:rgba(39,226,164,.15);color:#6affe0;border:1px solid rgba(39,226,164,.35)}
     .badge.error{background:rgba(255,107,107,.14);color:#ffb3b3;border:1px solid rgba(255,107,107,.35)}
     .badge.info{background:rgba(122,183,255,.12);color:#bcd8ff;border:1px solid rgba(122,183,255,.3)}
-    .when{color:var(--muted);font-size:12px;min-width:165px}
+    .when{color:var(--muted);font-size:12px}
     .msg{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .copybtn{justify-self:end}
   </style>
 </head>
 <body>
@@ -85,21 +91,15 @@
           <div class="toolbar">
             <h2 style="margin:6px 8px 6px 8px">Recent activity</h2>
             <div class="spacer"></div>
+            <div class="pill active" data-filter="all" onclick="setFilter(this)">All</div>
+            <div class="pill" data-filter="success" onclick="setFilter(this)">Success</div>
+            <div class="pill" data-filter="error" onclick="setFilter(this)">Error</div>
+            <div class="pill" data-filter="info" onclick="setFilter(this)">Info</div>
+            <input id="q" class="search" placeholder="Search message..." oninput="applyFilters()" />
             <button class="pill" onclick="refreshActivity()">Refresh now</button>
           </div>
 
-          <div id="activity" class="loglist">
-            {% for e in entries %}
-              {% set show = (e.level in ['success','error']) or ('Job started' in e.msg) %}
-              {% if show %}
-              <a class="logrow" href="{{ url_for('log_run', run_slug=e.run) }}" title="Open full log">
-                <span class="badge {{ e.level }}">{{ e.level|upper if e.level!='info' else 'INFO' }}</span>
-                <span class="when"><span class="abs mono">{{ e.ts }}</span></span>
-                <span class="msg mono">{{ e.msg }}</span>
-              </a>
-              {% endif %}
-            {% endfor %}
-          </div>
+          <div id="activity" class="loglist"></div>
         </div>
       </section>
     </main>
@@ -110,27 +110,52 @@
   <script>
     function toggleNav(){ document.getElementById('nav').classList.toggle('open'); }
 
-    function render(entries){
-      const want = entries.filter(e => e.level === 'success' || e.level === 'error' || e.msg.includes('Job started'));
-      const html = want.map(e => `
-        <a class="logrow" href="{{ url_for('log_run', run_slug='__RUN__') }}".replace('__RUN__', e.run) title="Open full log">
+    let ALL = [];           // server entries
+    let currentFilter = 'all';
+
+    function setFilter(el){
+      document.querySelectorAll('.pill[data-filter]').forEach(p=>p.classList.remove('active'));
+      el.classList.add('active');
+      currentFilter = el.dataset.filter;
+      applyFilters();
+    }
+
+    function copyText(txt){
+      navigator.clipboard.writeText(txt).catch(()=>{});
+    }
+
+    function rowHTML(e){
+      const url = "{{ url_for('log_run', run_slug='__RUN__') }}".replace("__RUN__", e.run);
+      return `
+        <div class="logrow">
           <span class="badge ${e.level}">${e.level === 'info' ? 'INFO' : e.level.toUpperCase()}</span>
-          <span class="when"><span class="abs mono">${e.ts}</span></span>
-          <span class="msg mono">${e.msg}</span>
-        </a>
-      `).join('');
-      document.getElementById('activity').innerHTML = html;
+          <span class="when mono">${e.ts}</span>
+          <a class="msg mono" href="${url}" title="Open full log">${e.msg}</a>
+          <button class="pill copybtn" onclick="copyText(${JSON.stringify(e.copy)})">Copy</button>
+        </div>
+      `;
+    }
+
+    function applyFilters(){
+      const q = (document.getElementById('q').value || '').toLowerCase();
+      const filtered = ALL.filter(e =>
+        (currentFilter === 'all' || e.level === currentFilter) &&
+        (q === '' || e.msg.toLowerCase().includes(q))
+      );
+      document.getElementById('activity').innerHTML = filtered.map(rowHTML).join('');
     }
 
     async function refreshActivity(){
       try{
         const r = await fetch('{{ url_for("api_status") }}');
         const data = await r.json();
-        render(data.entries || []);
+        ALL = (data.entries || []);
+        applyFilters();
       }catch(e){}
     }
 
-    // auto-refresh
+    // initial load + auto refresh
+    refreshActivity();
     setInterval(refreshActivity, 20000);
   </script>
 </body>

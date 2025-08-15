@@ -214,42 +214,59 @@ def _group_runs(lines: list[str]):
 def _build_activity_entries():
     """
     Build minimal entries for Overview:
-      - all SUCCESS / ERROR lines
-      - the single 'Job started' line for its run
-    Each entry include link slug for its run.
+      - only: "Job started" (info), any error lines, and "Completed" success line
+      - each entry has: ts, level, msg (short), copy (full), run (slug)
     """
-    raw = _read_status_lines(limit=400)
+    raw = _read_status_lines(limit=600)
     runs = _group_runs(raw)
 
-    entries = []
+    out = []
     for r in runs:
-        # one 'Job started' if present
+        # find the "Job started" line (first one in the run)
         for ln in r["lines"]:
             if "Job started" in ln:
                 ts = TS_RE.search(ln)
-                entries.append({
+                out.append({
                     "ts": ts.group(0) if ts else "",
                     "level": "info",
-                    "msg": ln.split(" - ", 1)[-1].strip(),
+                    "msg": "Job started",
+                    "copy": ln,         # full line for clipboard
                     "run": r["slug"]
                 })
                 break
 
-        # all success/error in that run
+        # include a single "Completed" success line (if present)
+        done = None
         for ln in r["lines"]:
-            lvl = _parse_level(ln)
-            if lvl in ("success", "error"):
+            if "[SUCCESS]" in ln and "Completed" in ln:
+                done = ln
+        if done:
+            ts = TS_RE.search(done)
+            # show concise message
+            short = done.split(" - ", 1)[-1].strip()
+            out.append({
+                "ts": ts.group(0) if ts else "",
+                "level": "success",
+                "msg": short,  # already concise (Completed. File ... • Rows: N)
+                "copy": done,
+                "run": r["slug"]
+            })
+
+        # include any error in the run (they matter)
+        for ln in r["lines"]:
+            if "[ERROR]" in ln or "[FAILED]" in ln:
                 ts = TS_RE.search(ln)
-                entries.append({
+                short = ln.split(" - ", 1)[-1].strip()
+                out.append({
                     "ts": ts.group(0) if ts else "",
-                    "level": lvl,
-                    "msg": ln.split(" - ", 1)[-1].strip(),
+                    "level": "error",
+                    "msg": short,
+                    "copy": ln,
                     "run": r["slug"]
                 })
 
-    # newest first
-    entries.sort(key=lambda e: e["ts"], reverse=True)
-    return entries
+    out.sort(key=lambda e: e["ts"], reverse=True)
+    return out
 
 @app.route("/files")
 @login_required
