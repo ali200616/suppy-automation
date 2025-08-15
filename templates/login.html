@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Login</h1>
+  <form method="post" class="card" style="max-width:420px">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() if csrf_token is defined else '' }}">
+    {% if error %}<div class="muted" style="color:#ff9b9b">{{ error }}</div>{% endif %}
+    <label>Username</label>
+    <input name="username" autocomplete="username" required />
+    <label style="margin-top:8px">Password</label>
+    <input name="password" type="password" autocomplete="current-password" required />
+    <div style="margin-top:12px;display:flex;gap:10px">
+      <button class="btn btn-primary" type="submit">Login</button>
+      <a class="btn" href="{{ url_for('home') }}">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

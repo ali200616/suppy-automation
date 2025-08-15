@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% set active='contact' %}
+{% block content %}
+  <h1>Contact Us</h1>
+  <div class="card">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <h3>Phone</h3>
+        <p class="mono">{{ contact.phone or '+961-000-000' }}</p>
+        <h3 style="margin-top:10px">Email</h3>
+        <p class="mono">{{ contact.email or 'support@alforno.app' }}</p>
+      </div>
+      <div>
+        <h3>Social</h3>
+        <p><a href="{{ contact.ig or '#' }}" target="_blank" rel="noopener noreferrer">Instagram</a></p>
+        <p><a href="{{ contact.fb or '#' }}" target="_blank" rel="noopener noreferrer">Facebook</a></p>
+      </div>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>My Profile</h1>
+  <form method="post" class="card" style="max-width:520px">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() if csrf_token is defined else '' }}">
+    <label>Username</label>
+    <input name="username" value="{{ user.username }}" required />
+    <label style="margin-top:8px">Email (generated)</label>
+    <input value="{{ user.email }}" disabled />
+    <label style="margin-top:8px">Position</label>
+    <input name="position" value="{{ user.position or '' }}" />
+    <label style="margin-top:8px">New Password (optional)</label>
+    <input name="password" type="password" placeholder="Leave empty to keep current" />
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button class="btn btn-primary" type="submit">Save</button>
+      <a class="btn" href="{{ url_for('home') }}">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

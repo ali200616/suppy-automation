@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{{ title or "Al Forno App Portal" }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="{{ url_for('static', filename='logo.png') }}" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data:; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'">
+
+  <style>
+    :root{
+      --bg:#0c1117;
+      --grad-a: rgba(0,224,164,.10);
+      --grad-b: rgba(124,249,203,.16);
+      --card:#0f1520;
+      --glass1: rgba(255,255,255,.05);
+      --glass2: rgba(255,255,255,.02);
+      --stroke:#18202b;
+      --ink:#eaf1fb;
+      --muted:#97a7c2;
+      --chip:#122033;
+      --ok:#27e2a4;
+      --danger:#ff6b6b;
+      --btn:#00e0a4;
+      --btn2:#5affc0;
+      --shadow: 0 22px 50px rgba(0,0,0,.45);
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--ink);
+      background:
+        radial-gradient(1000px 500px at -15% -25%, var(--grad-a), transparent 62%),
+        radial-gradient(1000px 500px at 115% -15%, var(--grad-b), transparent 60%),
+        #0c1117;
+    }
+
+    a{color:inherit;text-decoration:none}
+    .muted{color:var(--muted)}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+    .wrap{max-width:1200px;margin:0 auto;padding:0 18px}
+
+    header{
+      display:flex;align-items:center;gap:12px;
+      padding:16px 0;border-bottom:1px solid var(--stroke);
+      position:sticky;top:0;background:rgba(12,17,23,.80);backdrop-filter:blur(10px);z-index:10
+    }
+    .brand{display:flex;align-items:center;gap:10px}
+    .brand img{height:34px;width:auto;filter:drop-shadow(0 2px 8px rgba(0,224,164,.18))}
+    .title{font-weight:800;font-size:18px;letter-spacing:.2px}
+    .chip{
+      background:var(--chip);
+      border:1px solid var(--stroke);
+      padding:4px 10px;border-radius:999px;
+      font-weight:700;font-size:12px;margin-left:8px;color:#a7ffd8;
+    }
+    .spacer{flex:1}
+
+    .btn{
+      background: linear-gradient(180deg, var(--glass1), var(--glass2));
+      border:1px solid var(--stroke);
+      padding:8px 12px;border-radius:12px;
+      display:inline-flex;gap:8px;align-items:center;cursor:pointer;
+      font-weight:700;box-shadow:var(--shadow)
+    }
+    .btn:hover{filter:brightness(1.05)}
+    .btn-primary{
+      background: linear-gradient(180deg, var(--btn2), var(--btn));
+      color:#062d1f;border:0;font-weight:800
+    }
+
+    main{display:grid;grid-template-columns:240px 1fr;gap:18px;margin-top:18px}
+    nav{position:sticky;top:72px;align-self:start}
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border:1px solid var(--stroke);border-radius:16px;box-shadow:var(--shadow);padding:14px
+    }
+
+    .navlink{
+      display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;
+      border:1px solid transparent;font-weight:700
+    }
+    .navlink.active,.navlink:hover{border-color:var(--stroke);background:var(--chip)}
+
+    .hamb{display:none}
+    @media (max-width:900px){
+      main{grid-template-columns:1fr}
+      nav{position:fixed;top:64px;left:0;right:0;background:rgba(16,23,33,.98);
+          padding:10px 14px;transform:translateY(-140%);transition:transform .2s ease}
+      nav.open{transform:translateY(0)}
+      .hamb{display:inline-flex}
+    }
+
+    table{width:100%;border-collapse:collapse}
+    thead th{font-weight:800;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+    th,td{padding:10px 8px;border-bottom:1px solid var(--stroke);vertical-align:middle}
+    tr:hover td{background:#121a28}
+    .td-filename{max-width:420px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+    .log{display:flex;flex-direction:column-reverse;gap:10px;max-height:420px;overflow:auto;padding-right:8px}
+    .row{display:flex;align-items:flex-start;gap:10px}
+    .dot{width:10px;height:10px;border-radius:6px}
+    .dot.ok{background:var(--ok)} .dot.bad{background:var(--danger)}
+    .row.bad .mono{color:#ffb3b3;font-weight:700}
+
+    footer{margin:24px 0;color:var(--muted);font-size:12px;text-align:center}
+    .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;padding:0;margin:-1px}
+
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+    @media (max-width:900px){ .grid{grid-template-columns:1fr} }
+
+    input,select,textarea{width:100%;padding:10px;border-radius:12px;border:1px solid var(--stroke);
+                           background:#0f1a29;color:var(--ink)}
+    label{font-weight:700;font-size:12px;margin-bottom:6px;display:block}
+    form .row{gap:12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <button class="btn hamb" onclick="toggleNav()" aria-label="Menu">☰</button>
+      <a class="brand" href="{{ url_for('home') }}">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="logo" />
+        <div class="title">Al Forno App Portal</div>
+      </a>
+      <span class="chip">LIVE</span>
+      <div class="spacer"></div>
+      {% if current_user.is_authenticated %}
+        <a class="btn" href="{{ url_for('profile') }}">Profile</a>
+        <a class="btn" href="{{ url_for('logout') }}">Logout</a>
+      {% else %}
+        <a class="btn" href="{{ url_for('login') }}">Login</a>
+      {% endif %}
+    </header>
+
+    <main>
+      <nav id="nav">
+        <a class="navlink {% if active=='home' %}active{% endif %}" href="{{ url_for('home') }}">Overview</a>
+        <a class="navlink {% if active=='files' %}active{% endif %}" href="{{ url_for('files_page') }}">Files</a>
+        <a class="navlink {% if active=='news' %}active{% endif %}" href="{{ url_for('news_list') }}">News</a>
+        <a class="navlink {% if active=='contact' %}active{% endif %}" href="{{ url_for('contact') }}">Contact</a>
+        {% if current_user.is_authenticated and current_user.role=='admin' %}
+          <a class="navlink {% if active=='users' %}active{% endif %}" href="{{ url_for('users_admin') }}">Users</a>
+        {% endif %}
+      </nav>
+
+      <section>
+        {% with msgs = get_flashed_messages(with_categories=true) %}
+          {% if msgs %}
+            <div class="card" style="margin-bottom:12px">
+              {% for cat,msg in msgs %}<div class="muted">{{ msg }}</div>{% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+      </section>
+    </main>
+
+    <footer>© {{ year }} Al Forno • App Portal</footer>
+  </div>
+
+  <script>
+    function toggleNav(){ document.getElementById('nav').classList.toggle('open'); }
+
+    function humanize(dt){
+      const t = new Date(dt.replace(' ','T'));
+      const s = (Date.now() - t.getTime())/1000;
+      if (!isFinite(s)) return '';
+      if (s < 60) return `${Math.max(0, Math.floor(s))}s ago`;
+      const m = s/60; if (m < 60) return `${Math.floor(m)}m ago`;
+      const h = m/60; if (h < 24) return `${Math.floor(h)}h ago`;
+      const d = h/24; return `${Math.floor(d)}d ago`;
+    }
+
+    function stampFromText(el){
+      const data = el.getAttribute('data-abs');
+      if (data) return data;
+      const abs = el.querySelector('.abs')?.textContent || '';
+      const m = abs.match(/\b\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\b/);
+      return m ? m[0] : '';
+    }
+
+    function updateRelTimes(){
+      document.querySelectorAll('.mtime, .log .row .mono').forEach(el=>{
+        const ts = stampFromText(el);
+        if (!ts) return;
+        const relEl = el.querySelector('.rel');
+        if (relEl) relEl.textContent = `(${humanize(ts)})`;
+        el.setAttribute('data-abs', ts);
+      });
+    }
+
+    async function refreshSections(){
+      try{
+        const logWrap = document.querySelector('.log');
+        if (logWrap){
+          const r = await fetch('{{ url_for("api_status") }}');
+          const data = await r.json();
+          logWrap.innerHTML = (data.lines||[]).slice().reverse().map(line => {
+            const bad = line.includes('[FAILED]') || line.includes('[ERROR]');
+            const good = line.includes('[SUCCESS]');
+            const m = line.match(/\b\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\b/);
+            const ts = m ? m[0] : '';
+            return `<div class="row ${bad?'bad':(good?'ok':'')}">
+              <div class="dot ${bad?'bad':'ok'}"></div>
+              <div class="mono" data-abs="${ts}">
+                <span class="abs">${line}</span> <span class="rel muted"></span>
+              </div>
+            </div>`;
+          }).join('');
+        }
+        const filesTbody = document.querySelector('#files-tbody');
+        if (filesTbody){
+          const r2 = await fetch('{{ url_for("api_csvs") }}');
+          const data2 = await r2.json();
+          filesTbody.innerHTML = (data2.items||[]).map(f => {
+            const m = f.mtime;
+            return `<tr data-date="${m.substring(0,10)}">
+              <td class="mono td-filename" title="${f.name}">${f.name}</td>
+              <td>${f.size_kb} KB</td>
+              <td class="mtime" data-abs="${m}"><span class="abs">${m}</span> <span class="rel muted"></span></td>
+              <td><a class="btn btn-primary" href="{{ url_for('download', filename='') }}${encodeURIComponent(f.name)}">Download</a></td>
+            </tr>`;
+          }).join('');
+          applyDateFilter && applyDateFilter();
+        }
+        updateRelTimes();
+      }catch(e){}
+    }
+
+    function applyDateFilter(){
+      const s = document.getElementById('date-start')?.value;
+      const e = document.getElementById('date-end')?.value;
+      document.querySelectorAll('#files-tbody tr').forEach(tr => {
+        const d = tr.getAttribute('data-date');
+        let keep = true;
+        if (s) keep = keep && (d >= s);
+        if (e) keep = keep && (d <= e);
+        tr.style.display = keep ? '' : 'none';
+      });
+    }
+
+    updateRelTimes();
+    setInterval(()=>{ refreshSections(); }, 20000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Edit User</h1>
+  <form method="post" class="card" style="max-width:520px">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() if csrf_token is defined else '' }}">
+    <label>Username</label>
+    <input name="username" value="{{ user.username }}" required />
+    <label style="margin-top:8px">Email</label>
+    <input name="email" value="{{ user.email }}" required />
+    <label style="margin-top:8px">Position</label>
+    <input name="position" value="{{ user.position or '' }}" />
+    <label style="margin-top:8px">Role</label>
+    <select name="role">
+      <option value="viewer" {% if user.role=='viewer' %}selected{% endif %}>viewer</option>
+      <option value="editor" {% if user.role=='editor' %}selected{% endif %}>editor</option>
+      <option value="admin"  {% if user.role=='admin' %}selected{% endif %}>admin</option>
+    </select>
+    <label style="margin-top:8px">New Password (optional)</label>
+    <input name="password" type="password" placeholder="Leave empty to keep current" />
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button class="btn btn-primary" type="submit">Save</button>
+      <a class="btn" href="{{ url_for('users_admin') }}">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

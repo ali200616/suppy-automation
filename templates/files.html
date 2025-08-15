@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% set active='files' %}
+{% block content %}
+  <h1>Files</h1>
+  {% if csvs %}
+  <div style="display:flex;gap:10px;align-items:center;margin:6px 0 10px">
+    <label for="date-start" class="muted" style="margin:0">Filter by date:</label>
+    <input id="date-start" type="date" onchange="applyDateFilter()" />
+    <span class="muted">to</span>
+    <input id="date-end" type="date" onchange="applyDateFilter()" />
+  </div>
+  <table class="table">
+    <thead><tr><th>File</th><th>Size</th><th>Uploaded</th><th></th></tr></thead>
+    <tbody id="files-tbody">
+      {% for f in csvs %}
+      <tr data-date="{{ f['mtime'][:10] }}">
+        <td class="mono td-filename" title="{{ f['name'] }}">{{ f['name'] }}</td>
+        <td>{{ f['size_kb'] }} KB</td>
+        <td class="mtime" data-abs="{{ f['mtime'] }}">
+          <span class="abs">{{ f['mtime'] }}</span>
+          <span class="rel muted"></span>
+        </td>
+        <td><a class="btn btn-primary" href="{{ url_for('download', filename=f['name']) }}">Download</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="muted">No CSV files found.</div>
+  {% endif %}
+{% endblock %}

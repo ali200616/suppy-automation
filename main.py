@@ -30,6 +30,7 @@ SUPPY_MI_URL   = os.getenv("SUPPY_MI_URL", "https://portal-api.suppy.app/api/man
 
 # Optional: dashboard + Telegram
 DASHBOARD_URL      = os.getenv("DASHBOARD_URL", "").strip()
+DASH_API_KEY       = os.getenv("DASH_API_KEY", "").strip()  # <-- added
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
@@ -120,8 +121,7 @@ def download_sheet_as_dataframe() -> pd.DataFrame:
     if df.empty:
         raise RuntimeError("After dropping column C, dataframe is empty.")
 
-    # Only minimal safety casts to avoid breaking formats:
-    # Keep Barcodes as string to preserve leading zeros; leave every other column AS-IS.
+    # Keep Barcodes as string to preserve leading zeros
     if "Barcodes" in df.columns:
         df["Barcodes"] = df["Barcodes"].astype(str).str.strip()
 
@@ -154,14 +154,12 @@ def write_csv(df: pd.DataFrame) -> Path:
         sep=MI_SEP,
     )
 
-    # Log head & tail to prove ALL rows included
     head = df.head(5).to_csv(index=False)
     tail = df.tail(5).to_csv(index=False)
     log_line("DEBUG", f"Preview (head 5):\n{head}")
     log_line("DEBUG", f"Preview (tail 5):\n{tail}")
     log_line("INFO",  f"CSV rows sent: {len(df)} | First barcode: {df.iloc[0].get('Barcodes','N/A')} | Last barcode: {df.iloc[-1].get('Barcodes','N/A')}")
 
-    # Also show first two lines as actually written
     try:
         with open(path, "r", encoding="utf-8", newline="") as f:
             first = f.readline().rstrip("\r\n")
@@ -226,21 +224,15 @@ def get_suppy_token() -> str:
 
 # ================== Weird MI response helpers ==================
 def _parse_possibly_concatenated_json(text: str):
-    """
-    MI sometimes returns two JSON blobs concatenated.
-    Split and parse all; return list of dicts.
-    """
     chunks = []
     buf = (text or "").strip()
     if not buf:
         return chunks
-    # try direct
     try:
         chunks.append(json.loads(buf))
         return chunks
     except Exception:
         pass
-    # split on '}{'
     parts, start = [], 0
     for i in range(len(buf) - 1):
         if buf[i] == '}' and buf[i+1] == '{':
@@ -254,7 +246,6 @@ def _parse_possibly_concatenated_json(text: str):
         try:
             chunks.append(json.loads(p))
         except Exception:
-            # give up on bad fragments silently
             pass
     return chunks
 
@@ -274,16 +265,13 @@ def _any_success(chunks):
 # ================== Uploads ==================
 def upload_to_suppy_mi(csv_path: Path) -> dict:
     def do_post(token: str):
-        files = {"file": (csv_path.name, open(csv_path, "rb"), "text/csv")}
-        data  = {
-            "branchId": str(BRANCH_ID or ""),
-            "partnerId": str(PARTNER_ID or ""),
-            "type":     str(MI_TYPE),
-        }
+        data  = {"branchId": str(BRANCH_ID or ""), "partnerId": str(PARTNER_ID or ""), "type": str(MI_TYPE)}
         headers = {"Accept": "application/json", "portal-v2": "true"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        return requests.post(SUPPY_MI_URL, headers=headers, data=data, files=files, timeout=120)
+        with open(csv_path, "rb") as f:
+            files = {"file": (csv_path.name, f, "text/csv")}
+            return requests.post(SUPPY_MI_URL, headers=headers, data=data, files=files, timeout=120)
 
     token = get_suppy_token()
     resp = do_post(token)
@@ -295,7 +283,6 @@ def upload_to_suppy_mi(csv_path: Path) -> dict:
     if resp.status_code != 200:
         raise RuntimeError(f"Suppy MI HTTP {resp.status_code}: {resp.text[:800]}")
 
-    # Parse response robustly
     try:
         body = resp.json()
         chunks = [body]
@@ -312,26 +299,33 @@ def upload_to_suppy_mi(csv_path: Path) -> dict:
 
     return {"chunks": chunks}
 
-# Add near your other helpers:
 def upload_to_dashboard(csv_path: Path):
     if not DASHBOARD_URL:
         return
     try:
+        headers = {}
+        if DASH_API_KEY:
+            headers["X-API-Key"] = DASH_API_KEY  # <-- added
         requests.post(
             f"{DASHBOARD_URL.rstrip('/')}/upload",
             files={"file": (csv_path.name, open(csv_path, "rb"), "text/csv")},
+            headers=headers,
             timeout=60,
         )
     except Exception:
-        pass  # don't spam failures here; we log status separately
+        pass
 
 def post_dashboard_status(status: str, message: str, filename: str = ""):
     if not DASHBOARD_URL:
         return
     try:
+        headers = {"Content-Type": "application/json"}
+        if DASH_API_KEY:
+            headers["X-API-Key"] = DASH_API_KEY  # <-- added
         requests.post(
             f"{DASHBOARD_URL.rstrip('/')}/log",
-            json={"status": status, "message": message, "filename": filename},
+            data=json.dumps({"status": status, "message": message, "filename": filename}),
+            headers=headers,
             timeout=30,
         )
     except Exception:
@@ -352,7 +346,7 @@ if __name__ == "__main__":
         log_line("INFO", f"Suppy MI response chunks: {json.dumps(mi_body)[:1200]}")
 
         upload_to_dashboard(csv_path)
-        post_dashboard_status("success", "Upload succeeded", csv_path.name)   # ← ADD THIS
+        post_dashboard_status("success", "Upload succeeded", csv_path.name)
 
         msg = f"✅ Upload completed\nFile: {csv_path.name}\nRows: {len(df)}\nTime: {now_lebanon()}"
         send_telegram_message(msg)
@@ -362,5 +356,5 @@ if __name__ == "__main__":
         err = f"❌ Upload failed: {e}"
         send_telegram_message(err)
         log_line("ERROR", str(e))
-        post_dashboard_status("failed", str(e))  # ← ADD THIS
+        post_dashboard_status("failed", str(e))
         raise

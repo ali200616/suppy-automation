@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>{{ 'Edit Post' if post else 'New Post' }}</h1>
+  <form method="post" class="card">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() if csrf_token is defined else '' }}">
+    <div class="row">
+      <div style="flex:1">
+        <label>Title</label>
+        <input name="title" value="{{ post.title if post else '' }}" required />
+      </div>
+      <div style="width:180px">
+        <label>Status</label>
+        <select name="published">
+          <option value="1" {% if post and post.published %}selected{% endif %}>Published</option>
+          <option value="0" {% if post and not post.published %}selected{% endif %}>Draft</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <label>Body (Markdown supported)</label>
+      <textarea name="body" rows="12" placeholder="Write news in Markdown...">{{ post.body_md if post else '' }}</textarea>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:10px">
+      <button class="btn btn-primary" type="submit">Save</button>
+      <a class="btn" href="{{ url_for('news_list') }}">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% set active='news' %}
+{% block content %}
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <h1>News</h1>
+    {% if current_user.is_authenticated and current_user.role in ['admin','editor'] %}
+      <a class="btn btn-primary" href="{{ url_for('news_new') }}">New Post</a>
+    {% endif %}
+  </div>
+  {% if posts %}
+    {% for p in posts %}
+      <article class="card" style="margin-bottom:12px">
+        <h3 style="margin:0 0 6px">{{ p.title }}</h3>
+        <div class="muted" data-abs="{{ p.created_at }}"><span class="abs">{{ p.created_at }}</span> <span class="rel muted"></span></div>
+        <div style="margin-top:10px">{{ p.html|safe }}</div>
+        {% if current_user.is_authenticated and current_user.role in ['admin','editor'] %}
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <a class="btn" href="{{ url_for('news_edit', post_id=p.id) }}">Edit</a>
+          </div>
+        {% endif %}
+      </article>
+    {% endfor %}
+  {% else %}
+    <div class="muted">No news yet.</div>
+  {% endif %}
+{% endblock %}
