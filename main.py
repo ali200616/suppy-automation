@@ -48,6 +48,8 @@ LOGS.mkdir(parents=True, exist_ok=True)
 TOKEN_FILE = LOGS / "suppy_token.json"
 
 # ================== Utils & Logging ==================
+TZ = pytz.timezone("Asia/Beirut")
+
 def now_lebanon() -> str:
     tz = pytz.timezone("Asia/Beirut")
     return datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
@@ -134,7 +136,7 @@ def _quoting_mode():
     }.get(MI_QUOTING.upper(), csv.QUOTE_ALL)
 
 def write_csv(df: pd.DataFrame) -> Path:
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now(TZ).strftime("%Y%m%d_%H%M%S")
     name  = f"{(SHEET_NAME or 'Local').replace(' ','_')}_{stamp}.csv"
     path  = EXPORTS / name
 

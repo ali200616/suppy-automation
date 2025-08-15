@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime
 import pytz
 from flask import Flask, request, render_template, send_from_directory, abort, jsonify
+tz = pytz.timezone("Asia/Beirut")
 
 # --- Paths ---
 BASE = Path(__file__).resolve().parent
@@ -40,10 +41,12 @@ def list_csvs():
     items = []
     for p in sorted(UPLOADS.glob("*.csv"), key=lambda x: x.stat().st_mtime, reverse=True):
         stat = p.stat()
+        # Convert file mtime from UTC → Beirut
+        mtime_dt = datetime.fromtimestamp(stat.st_mtime, tz=pytz.UTC).astimezone(tz)
         items.append({
             "name": p.name,
             "size_kb": max(1, stat.st_size // 1024),
-            "mtime": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+            "mtime": mtime_dt.strftime("%Y-%m-%d %H:%M:%S"),
         })
     return items
 
