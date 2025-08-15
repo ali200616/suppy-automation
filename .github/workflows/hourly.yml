@@ -33,7 +33,10 @@ jobs:
         PARTNER_ID: ${{ secrets.PARTNER_ID }}
         SHEET_ID: ${{ secrets.SHEET_ID }}
         SHEET_NAME: ${{ secrets.SHEET_NAME }}
+	BRANCH_ID: ${{ secrets.BRANCH_ID }}
+	MI_TYPE: ${{ secrets.MI_TYPE }}
         DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+	DASH_API_KEY: ${{ secrets.DASH_API_KEY }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |

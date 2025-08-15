@@ -158,7 +158,65 @@
           {% endif %}
         {% endwith %}
 
-        {% block content %}{% endblock %}
+        {% block content %}
+
+<!-- Activity / Overview -->
+<div class="card" style="margin-bottom:18px">
+  <h2 style="margin:6px 8px 12px 8px">Recent activity</h2>
+  <div class="log">
+    {# initial render from server 'lines'; JS will auto-refresh every 20s #}
+    {% for line in lines %}
+      {% set is_bad = ('[FAILED]' in line) or ('[ERROR]' in line) %}
+      <div class="row {{ 'bad' if is_bad else 'ok' }}">
+        <div class="dot {{ 'bad' if is_bad else 'ok' }}"></div>
+        <div class="mono">
+          <span class="abs">{{ line }}</span>
+          <span class="rel muted"></span>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Files (same table the JS keeps updated) -->
+<div class="card">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <h2 style="margin:6px 8px 6px 8px">Files</h2>
+    <div class="spacer"></div>
+    <label class="sr-only" for="date-start">From</label>
+    <input id="date-start" type="date" oninput="applyDateFilter()" />
+    <label class="sr-only" for="date-end">To</label>
+    <input id="date-end" type="date" oninput="applyDateFilter()" />
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Filename</th>
+        <th>Size</th>
+        <th>Modified</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="files-tbody">
+      {# initial render from server 'csvs'; JS will overwrite/refresh #}
+      {% for f in csvs %}
+      <tr data-date="{{ f.mtime[:10] }}">
+        <td class="mono td-filename" title="{{ f.name }}">{{ f.name }}</td>
+        <td>{{ f.size_kb }} KB</td>
+        <td class="mtime" data-abs="{{ f.mtime }}">
+          <span class="abs">{{ f.mtime }}</span> <span class="rel muted"></span>
+        </td>
+        <td>
+          <a class="btn btn-primary" href="{{ url_for('download', filename=f.name) }}">Download</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
       </section>
     </main>
 
