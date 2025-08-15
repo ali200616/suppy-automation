@@ -9,6 +9,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta, timezone
 import pytz
 from pathlib import Path
+import traceback
 
 # ================== Setup & ENV ==================
 load_dotenv()
@@ -28,17 +29,17 @@ SUPPY_EMAIL    = os.getenv("SUPPY_EMAIL", "").strip()
 SUPPY_PASSWORD = os.getenv("SUPPY_PASSWORD", "").strip()
 SUPPY_MI_URL   = os.getenv("SUPPY_MI_URL", "https://portal-api.suppy.app/api/manual-integration")
 
-# Optional: dashboard + Telegram
-DASHBOARD_URL      = os.getenv("DASHBOARD_URL", "").strip()
-DASH_API_KEY       = os.getenv("DASH_API_KEY", "").strip()  # <-- added
+# Dashboard + Telegram
+DASHBOARD_URL      = os.getenv("DASHBOARD_URL", "").strip().rstrip("/")
+DASH_API_KEY       = os.getenv("DASH_API_KEY", "").strip()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
-# CSV knobs (defaults chosen to KEEP HEADERS)
-MI_CSV_HEADER   = os.getenv("MI_CSV_HEADER", "1").strip()     # "1" -> include header, "0" -> no header
-MI_LINE_ENDING  = os.getenv("MI_LINE_ENDING", "CRLF").strip() # "CRLF" or "LF"
-MI_QUOTING      = os.getenv("MI_QUOTING", "ALL").strip()      # "ALL"|"MINIMAL"|"NONNUMERIC"|"NONE"
-MI_SEP          = os.getenv("MI_SEP", ",").strip()            # "," or ";" etc.
+# CSV knobs
+MI_CSV_HEADER   = os.getenv("MI_CSV_HEADER", "1").strip()
+MI_LINE_ENDING  = os.getenv("MI_LINE_ENDING", "CRLF").strip()
+MI_QUOTING      = os.getenv("MI_QUOTING", "ALL").strip()
+MI_SEP          = os.getenv("MI_SEP", ",").strip()
 
 BASE_DIR = Path(os.path.dirname(__file__) or ".").resolve()
 EXPORTS  = BASE_DIR / "exports"
@@ -52,13 +53,12 @@ TOKEN_FILE = LOGS / "suppy_token.json"
 TZ = pytz.timezone("Asia/Beirut")
 
 def now_lebanon() -> str:
-    tz = pytz.timezone("Asia/Beirut")
-    return datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 def _append_log(line: str):
     p = LOGS / "integration-log.txt"
-    prev = p.read_text(encoding="utf-8") if p.exists() else ""
-    p.write_text(prev + line, encoding="utf-8")
+    with open(p, "a", encoding="utf-8") as f:
+        f.write(line)
 
 def log_line(kind: str, msg: str):
     line = f"[{kind}] {now_lebanon()} {msg}\n"
@@ -76,6 +76,50 @@ def send_telegram_message(text: str):
         )
     except Exception:
         pass
+
+# -------- Dashboard helpers --------
+def post_dashboard_status(status: str, message: str, filename: str = ""):
+    if not DASHBOARD_URL:
+        return
+    try:
+        headers = {"Content-Type": "application/json"}
+        if DASH_API_KEY:
+            headers["X-API-Key"] = DASH_API_KEY
+        r = requests.post(
+            f"{DASHBOARD_URL}/log",
+            data=json.dumps({"status": status, "message": message, "filename": filename}),
+            headers=headers,
+            timeout=30,
+        )
+        if r.status_code != 200:
+            log_line("WARN", f"/log HTTP {r.status_code}: {r.text[:400]}")
+    except Exception as e:
+        log_line("WARN", f"/log exception: {e}")
+
+def upload_to_dashboard(csv_path: Path) -> bool:
+    if not DASHBOARD_URL:
+        log_line("WARN", "DASHBOARD_URL not set; skipping dashboard upload.")
+        return False
+    try:
+        headers = {}
+        if DASH_API_KEY:
+            headers["X-API-Key"] = DASH_API_KEY
+        with open(csv_path, "rb") as f:
+            r = requests.post(
+                f"{DASHBOARD_URL}/upload",
+                files={"file": (csv_path.name, f, "text/csv")},
+                headers=headers,
+                timeout=120,
+            )
+        if r.status_code == 200:
+            post_dashboard_status("success", f"Uploaded CSV to dashboard: {csv_path.name}", csv_path.name)
+            return True
+        else:
+            post_dashboard_status("failed", f"Dashboard upload HTTP {r.status_code}: {r.text[:800]}", csv_path.name)
+            return False
+    except Exception as e:
+        post_dashboard_status("failed", f"Dashboard upload exception: {e}", csv_path.name)
+        return False
 
 # ================== Google Sheet -> DataFrame ==================
 def download_sheet_as_dataframe() -> pd.DataFrame:
@@ -97,13 +141,10 @@ def download_sheet_as_dataframe() -> pd.DataFrame:
 
     headers = values[0]
     rows    = values[1:]
-
-    # Robustly drop column C (zero-based index 2) and keep ALL others in the SAME order
     c_idx = 2
     if len(headers) <= c_idx:
         raise RuntimeError(f"Sheet has no column C. Headers: {headers}")
 
-    # Normalize each row to header length (pad/truncate)
     norm_rows = []
     for r in rows:
         if len(r) < len(headers):
@@ -112,16 +153,13 @@ def download_sheet_as_dataframe() -> pd.DataFrame:
             r = r[:len(headers)]
         norm_rows.append(r)
 
-    # Remove C from headers and each row
     out_headers  = headers[:c_idx] + headers[c_idx+1:]
     out_rows     = [r[:c_idx] + r[c_idx+1:] for r in norm_rows]
 
     df = pd.DataFrame(out_rows, columns=out_headers)
-
     if df.empty:
         raise RuntimeError("After dropping column C, dataframe is empty.")
 
-    # Keep Barcodes as string to preserve leading zeros
     if "Barcodes" in df.columns:
         df["Barcodes"] = df["Barcodes"].astype(str).str.strip()
 
@@ -154,18 +192,13 @@ def write_csv(df: pd.DataFrame) -> Path:
         sep=MI_SEP,
     )
 
-    head = df.head(5).to_csv(index=False)
-    tail = df.tail(5).to_csv(index=False)
-    log_line("DEBUG", f"Preview (head 5):\n{head}")
-    log_line("DEBUG", f"Preview (tail 5):\n{tail}")
-    log_line("INFO",  f"CSV rows sent: {len(df)} | First barcode: {df.iloc[0].get('Barcodes','N/A')} | Last barcode: {df.iloc[-1].get('Barcodes','N/A')}")
-
+    log_line("INFO",  f"CSV rows: {len(df)}")
     try:
         with open(path, "r", encoding="utf-8", newline="") as f:
             first = f.readline().rstrip("\r\n")
             second = f.readline().rstrip("\r\n")
-        log_line("DEBUG", f"CSV first line (file): {first}")
-        log_line("DEBUG", f"CSV second line (file): {second}")
+        log_line("DEBUG", f"CSV first line: {first}")
+        log_line("DEBUG", f"CSV second line: {second}")
     except Exception:
         pass
 
@@ -193,7 +226,7 @@ def _login_and_get_token() -> str:
         raise RuntimeError("Suppy credentials missing. Set SUPPY_EMAIL and SUPPY_PASSWORD in .env.")
     resp = requests.post(
         SUPPY_AUTH_URL,
-        json={"username": SUPPY_EMAIL, "password": SUPPY_PASSWORD},  # NOTE: username, not email
+        json={"username": SUPPY_EMAIL, "password": SUPPY_PASSWORD},
         timeout=60,
     )
     if resp.status_code != 200:
@@ -222,50 +255,12 @@ def get_suppy_token() -> str:
         return cached
     return _login_and_get_token()
 
-# ================== Weird MI response helpers ==================
-def _parse_possibly_concatenated_json(text: str):
-    chunks = []
-    buf = (text or "").strip()
-    if not buf:
-        return chunks
-    try:
-        chunks.append(json.loads(buf))
-        return chunks
-    except Exception:
-        pass
-    parts, start = [], 0
-    for i in range(len(buf) - 1):
-        if buf[i] == '}' and buf[i+1] == '{':
-            parts.append(buf[start:i+1])
-            start = i+1
-    parts.append(buf[start:])
-    for p in parts:
-        p = p.strip()
-        if not p:
-            continue
-        try:
-            chunks.append(json.loads(p))
-        except Exception:
-            pass
-    return chunks
-
-def _any_success(chunks):
-    for c in chunks:
-        if not isinstance(c, dict):
-            continue
-        if c.get("success") is True:
-            return True
-        if c.get("status") in (True, "ok", "success", "SUCCESS"):
-            return True
-        data = c.get("data")
-        if isinstance(data, dict) and data.get("success") in (True, "ok", "success", "SUCCESS"):
-            return True
-    return False
-
-# ================== Uploads ==================
+# ================== MI Upload ==================
 def upload_to_suppy_mi(csv_path: Path) -> dict:
+    if not (BRANCH_ID and PARTNER_ID):
+        raise RuntimeError("BRANCH_ID or PARTNER_ID missing; cannot upload to Suppy MI.")
     def do_post(token: str):
-        data  = {"branchId": str(BRANCH_ID or ""), "partnerId": str(PARTNER_ID or ""), "type": str(MI_TYPE)}
+        data  = {"branchId": str(BRANCH_ID), "partnerId": str(PARTNER_ID), "type": str(MI_TYPE)}
         headers = {"Accept": "application/json", "portal-v2": "true"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
@@ -280,81 +275,58 @@ def upload_to_suppy_mi(csv_path: Path) -> dict:
         token = _login_and_get_token()
         resp = do_post(token)
 
+    # surface non-200s
     if resp.status_code != 200:
         raise RuntimeError(f"Suppy MI HTTP {resp.status_code}: {resp.text[:800]}")
 
     try:
         body = resp.json()
-        chunks = [body]
+        return {"chunks": [body]}
     except Exception:
         raw = resp.text or ""
         log_line("WARN", f"Suppy MI returned non-JSON body: {raw[:800]}")
-        chunks = _parse_possibly_concatenated_json(raw)
-
-    if not chunks:
-        raise RuntimeError("MI returned empty/unknown response body.")
-
-    if not _any_success(chunks):
-        raise RuntimeError(f"MI returned no success chunk: {json.dumps(chunks)[:1200]}")
-
-    return {"chunks": chunks}
-
-def upload_to_dashboard(csv_path: Path):
-    if not DASHBOARD_URL:
-        return
-    try:
-        headers = {}
-        if DASH_API_KEY:
-            headers["X-API-Key"] = DASH_API_KEY  # <-- added
-        requests.post(
-            f"{DASHBOARD_URL.rstrip('/')}/upload",
-            files={"file": (csv_path.name, open(csv_path, "rb"), "text/csv")},
-            headers=headers,
-            timeout=60,
-        )
-    except Exception:
-        pass
-
-def post_dashboard_status(status: str, message: str, filename: str = ""):
-    if not DASHBOARD_URL:
-        return
-    try:
-        headers = {"Content-Type": "application/json"}
-        if DASH_API_KEY:
-            headers["X-API-Key"] = DASH_API_KEY  # <-- added
-        requests.post(
-            f"{DASHBOARD_URL.rstrip('/')}/log",
-            data=json.dumps({"status": status, "message": message, "filename": filename}),
-            headers=headers,
-            timeout=30,
-        )
-    except Exception:
-        pass
+        return {"chunks": [raw]}
 
 # ================== Main ==================
 if __name__ == "__main__":
     try:
         log_line("INFO", "Job started.")
+        post_dashboard_status("info", "Job started")
 
+        # 1) Fetch data
         df = download_sheet_as_dataframe()
-        log_line("INFO", f"Columns after drop-C: {list(df.columns)} | Total rows: {len(df)}")
+        log_line("INFO", f"Columns after drop-C: {list(df.columns)} | Rows: {len(df)}")
 
+        # 2) Write CSV
         csv_path = write_csv(df)
         log_line("INFO", f"CSV written: {csv_path.name}")
 
-        mi_body = upload_to_suppy_mi(csv_path)
-        log_line("INFO", f"Suppy MI response chunks: {json.dumps(mi_body)[:1200]}")
+        # 3) Upload to DASHBOARD FIRST (so Files shows even if Suppy fails)
+        uploaded = upload_to_dashboard(csv_path)
+        if not uploaded:
+            log_line("WARN", "Dashboard upload did not return 200. Check DASHBOARD_URL / DASH_API_KEY.")
 
-        upload_to_dashboard(csv_path)
-        post_dashboard_status("success", "Upload succeeded", csv_path.name)
+        # 4) Upload to Suppy MI (best effort)
+        try:
+            if not BRANCH_ID:
+                raise RuntimeError("BRANCH_ID is empty; Suppy MI will reject. Set BRANCH_ID.")
+            mi_body = upload_to_suppy_mi(csv_path)
+            log_line("INFO", f"Suppy MI response: {json.dumps(mi_body)[:1200]}")
+            post_dashboard_status("success", "Suppy MI upload OK", csv_path.name)
+        except Exception as e:
+            msg = f"Suppy MI upload failed: {e}"
+            log_line("ERROR", msg)
+            post_dashboard_status("failed", msg, csv_path.name)
 
-        msg = f"✅ Upload completed\nFile: {csv_path.name}\nRows: {len(df)}\nTime: {now_lebanon()}"
+        # 5) Done
+        msg = f"✅ Completed. File: {csv_path.name} • Rows: {len(df)}"
         send_telegram_message(msg)
         log_line("SUCCESS", msg)
+        post_dashboard_status("success", msg, csv_path.name)
 
     except Exception as e:
         err = f"❌ Upload failed: {e}"
         send_telegram_message(err)
-        log_line("ERROR", str(e))
+        log_line("ERROR", f"{e}\n{traceback.format_exc()}")
         post_dashboard_status("failed", str(e))
         raise
