@@ -418,6 +418,10 @@ def contact():
     except Exception:
         return "<h1>Contact</h1><p>Update templates/contact.html to customize this page.</p>"
 
+@app.route("/about")
+def about():
+    return render_template("about.html", year=datetime.now().year, active="about")
+
 # ================== Error Handling ==================
 @app.errorhandler(HTTPException)
 def handle_http_error(e):

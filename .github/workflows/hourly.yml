@@ -2,20 +2,15 @@ name: Suppy Automation
 
 on:
   schedule:
-    - cron: '*/30 * * * *'   # every 30 min (UTC)
+    - cron: "*/30 * * * *"   # every 30 minutes
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: suppy-automation
-  cancel-in-progress: true
-
 jobs:
   run-automation:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -24,29 +19,36 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: "3.9"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Materialize Google credentials
+      # Decode only if the secret is present
+      - name: Decode credentials.json from base64
         if: ${{ secrets.GSHEET_CREDENTIALS_B64 != '' }}
         run: |
-          printf '%s' "${{ secrets.GSHEET_CREDENTIALS_B64 }}" | base64 --decode > credentials.json
+          echo "${{ secrets.GSHEET_CREDENTIALS_B64 }}" | base64 --decode > credentials.json
+
+      # Optional: fail early if creds missing
+      - name: Check credentials.json exists
+        run: |
+          test -f credentials.json || { echo "credentials.json missing (set GSHEET_CREDENTIALS_B64 secret)"; exit 1; }
 
       - name: Run automation
         env:
-          SUPPY_EMAIL:         ${{ secrets.SUPPY_EMAIL }}
-          SUPPY_PASSWORD:      ${{ secrets.SUPPY_PASSWORD }}
-          PARTNER_ID:          ${{ secrets.PARTNER_ID }}
-          BRANCH_ID:           ${{ secrets.BRANCH_ID }}         # REQUIRED for MI
-          MI_TYPE:             ${{ secrets.MI_TYPE }}
-          SHEET_ID:            ${{ secrets.SHEET_ID }}
-          SHEET_NAME:          ${{ secrets.SHEET_NAME }}
-          DASHBOARD_URL:       ${{ secrets.DASHBOARD_URL }}     # e.g. https://suppy-automation.onrender.com
-          DASH_API_KEY:        ${{ secrets.DASH_API_KEY }}      # MUST match Render
-          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python main.py
+          SUPPY_EMAIL:        ${{ secrets.SUPPY_EMAIL }}
+          SUPPY_PASSWORD:     ${{ secrets.SUPPY_PASSWORD }}
+          PARTNER_ID:         ${{ secrets.PARTNER_ID }}
+          BRANCH_ID:          ${{ secrets.BRANCH_ID }}
+          MI_TYPE:            ${{ secrets.MI_TYPE }}
+          SHEET_ID:           ${{ secrets.SHEET_ID }}
+          SHEET_NAME:         ${{ secrets.SHEET_NAME }}
+          DASHBOARD_URL:      ${{ secrets.DASHBOARD_URL }}
+          DASH_API_KEY:       ${{ secrets.DASH_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python main.py
