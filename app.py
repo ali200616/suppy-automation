@@ -16,8 +16,9 @@ from flask_login import (
 )
 from sqlalchemy import create_engine, text
 import markdown as md
+from werkzeug.exceptions import HTTPException
 
-# ========== Paths & App ==========
+# ================== Paths & App ==================
 BASE = Path(__file__).resolve().parent
 UPLOADS = BASE / "uploads"
 LOGS = BASE / "logs"
@@ -31,16 +32,14 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "devsecret")
 app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_UPLOAD_MB", "10")) * 1024 * 1024
 
-# ========== Auth / DB ==========
+# ================== Auth / DB ==================
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
 DB_PATH = BASE / "app.db"
 engine = create_engine(f"sqlite:///{DB_PATH.as_posix()}", echo=False, future=True)
 TZ = pytz.timezone("Asia/Beirut")
-
-def now_ts():
-    return datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
+NOW = lambda: datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 def db_init():
     with engine.begin() as conn:
@@ -70,7 +69,7 @@ def db_init():
     print(f"[INIT] Database initialized at {DB_PATH}")
 
 def create_or_reset_admin():
-    # Always ensure 'admin' user exists and matches .env on app start
+    # Ensure admin exists and matches env on every boot
     admin_email = os.getenv("ADMIN_EMAIL", "admin@example.com").strip()
     admin_pass = os.getenv("ADMIN_PASSWORD", "admin123").strip()
     with engine.begin() as conn:
@@ -88,14 +87,14 @@ def create_or_reset_admin():
             "p": "Owner",
             "r": "admin",
             "h": generate_password_hash(admin_pass),
-            "c": now_ts()
+            "c": NOW()
         })
     print(f"[INIT] Admin user reset to 'admin' / {admin_pass}")
 
 db_init()
 create_or_reset_admin()
 
-# ========== User model ==========
+# ================== User model ==================
 class User(UserMixin):
     def __init__(self, id, username, email, position, role, password_hash, created_at):
         self.id = id
@@ -114,11 +113,11 @@ def load_user(user_id):
         ), {"id": user_id}).fetchone()
     return User(*row) if row else None
 
-# ========== Helpers ==========
+# ================== Helpers ==================
 def append_status_line(status, msg):
     STATUS_LOG.parent.mkdir(parents=True, exist_ok=True)
     with open(STATUS_LOG, "a", encoding="utf-8") as f:
-        f.write(f"[{status.upper()}] {now_ts()} - {msg}\n")
+        f.write(f"[{status.upper()}] {NOW()} - {msg}\n")
 
 def list_csvs():
     items = []
@@ -138,20 +137,33 @@ def _read_status_lines(limit=200):
 def _role_guard(roles):
     return current_user.is_authenticated and current_user.role in roles
 
-# ========== Routes: Core ==========
+def _api_key_allowed():
+    """Allow API calls if either:
+       - a matching X-API-Key is provided (when DASH_API_KEY is configured), OR
+       - a logged-in admin/editor performs the action.
+       If DASH_API_KEY is not set, do NOT require a key (dev mode)."""
+    api_key_env = os.getenv("DASH_API_KEY", "")
+    if not api_key_env:
+        return True  # no key configured -> dev/easy mode
+    if (current_user.is_authenticated and current_user.role in ("admin", "editor")):
+        return True
+    return request.headers.get("X-API-Key") == api_key_env
+
+# ================== Routes: Core ==================
 @app.route("/")
 def home():
-    return render_template("home.html",
-                           csvs=list_csvs(),
-                           lines=_read_status_lines(),
-                           year=datetime.now().year)
+    return render_template(
+        "home.html",
+        csvs=list_csvs(),
+        lines=_read_status_lines(),
+        year=datetime.now().year,
+        active="home"
+    )
 
 @app.route("/files")
 @login_required
 def files_page():
-    return render_template("files.html",
-                           csvs=list_csvs(),
-                           year=datetime.now().year)
+    return render_template("files.html", csvs=list_csvs(), year=datetime.now().year, active="files")
 
 @app.route("/login", methods=["GET","POST"])
 def login():
@@ -174,7 +186,7 @@ def logout():
     logout_user()
     return redirect(url_for("home"))
 
-# ========== Routes: Profile ==========
+# ================== Routes: Profile ==================
 @app.route("/profile", methods=["GET","POST"])
 @login_required
 def profile():
@@ -197,15 +209,14 @@ def profile():
         flash("Profile updated")
         return redirect(url_for("profile"))
 
-    # Reload fresh data
     with engine.begin() as conn:
         row = conn.execute(text(
             "SELECT id, username, email, position, role, password_hash, created_at FROM users WHERE id=:id"
         ), {"id": current_user.id}).fetchone()
     user = User(*row)
-    return render_template("profile.html", user=user, year=datetime.now().year)
+    return render_template("profile.html", user=user, year=datetime.now().year, active="profile")
 
-# ========== Routes: Users (Admin) ==========
+# ================== Routes: Users (Admin) ==================
 @app.route("/users", methods=["GET","POST"])
 @login_required
 def users_admin():
@@ -221,7 +232,6 @@ def users_admin():
         if not username or not email:
             flash("Username and email are required")
             return redirect(url_for("users_admin"))
-        # Generate a password since the create form has no password field
         gen_pw = secrets.token_urlsafe(8)
         try:
             with engine.begin() as conn:
@@ -229,9 +239,9 @@ def users_admin():
                     INSERT INTO users (username,email,position,role,password_hash,created_at)
                     VALUES (:u,:e,:p,:r,:h,:c)
                 """), {"u": username, "e": email, "p": position, "r": role,
-                       "h": generate_password_hash(gen_pw), "c": now_ts()})
+                       "h": generate_password_hash(gen_pw), "c": NOW()})
             flash(f"User created. Temp password: {gen_pw}")
-        except Exception as e:
+        except Exception:
             flash("Failed to create user (possibly duplicate username/email).")
     with engine.begin() as conn:
         rows = conn.execute(text(
@@ -275,14 +285,13 @@ def user_edit(user_id):
         flash("User updated")
         return redirect(url_for("users_admin"))
 
-    return render_template("user_edit.html", user=user, year=datetime.now().year)
+    return render_template("user_edit.html", user=user, year=datetime.now().year, active="users")
 
 @app.route("/users/<int:user_id>/delete", methods=["POST"])
 @login_required
 def user_delete(user_id):
     if not _role_guard(("admin",)):
         abort(403)
-    # Prevent deleting self (optional safeguard)
     if current_user.id == user_id:
         flash("You cannot delete your own account.")
         return redirect(url_for("users_admin"))
@@ -291,14 +300,13 @@ def user_delete(user_id):
     flash("User deleted")
     return redirect(url_for("users_admin"))
 
-# ========== Routes: News ==========
+# ================== Routes: News ==================
 @app.route("/news")
 def news_list():
     with engine.begin() as conn:
         rows = conn.execute(text("""
             SELECT id, title, body_md, html, published, created_at, updated_at
-            FROM news
-            ORDER BY id DESC
+            FROM news ORDER BY id DESC
         """)).fetchall()
     posts = [{"id": r[0], "title": r[1], "body_md": r[2], "html": r[3],
               "published": bool(r[4]), "created_at": r[5], "updated_at": r[6]} for r in rows]
@@ -319,9 +327,9 @@ def news_new():
                 INSERT INTO news (title, body_md, html, published, created_at, updated_at, author_id)
                 VALUES (:t,:b,:h,:p,:c,:u,:a)
             """), {"t": title, "b": body_md, "h": html, "p": published,
-                   "c": now_ts(), "u": now_ts(), "a": current_user.id})
+                   "c": NOW(), "u": NOW(), "a": current_user.id})
         return redirect(url_for("news_list"))
-    return render_template("news_edit.html", post=None, year=datetime.now().year)
+    return render_template("news_edit.html", post=None, year=datetime.now().year, active="news")
 
 @app.route("/news/<int:post_id>/edit", methods=["GET","POST"])
 @login_required
@@ -347,42 +355,42 @@ def news_edit(post_id):
         with engine.begin() as conn:
             conn.execute(text("""
                 UPDATE news SET title=:t, body_md=:b, html=:h, published=:p, updated_at=:u WHERE id=:id
-            """), {"t": title, "b": body_md, "h": html, "p": published, "u": now_ts(), "id": post_id})
+            """), {"t": title, "b": body_md, "h": html, "p": published, "u": NOW(), "id": post_id})
         return redirect(url_for("news_list"))
-    return render_template("news_edit.html", post=post, year=datetime.now().year)
+    return render_template("news_edit.html", post=post, year=datetime.now().year, active="news")
 
-# ========== Routes: Upload / Log / Download / JSON ==========
+# ================== Upload / Log / Download / JSON ==================
 @app.post("/upload")
 def upload_csv():
-    api_key = os.getenv("DASH_API_KEY", "")
-    allowed = (current_user.is_authenticated and current_user.role in ("admin","editor")) \
-              or (request.headers.get("X-API-Key") == api_key)
-    if not allowed:
-        abort(403)
+    if not _api_key_allowed():
+        abort(403, description="Forbidden: bad or missing X-API-Key")
     if "file" not in request.files:
-        abort(400)
+        abort(400, description="Bad Request: no 'file' part")
     f = request.files["file"]
+    if not f or not f.filename:
+        abort(400, description="Bad Request: empty filename")
     if not f.filename.lower().endswith(".csv"):
-        abort(400)
+        abort(400, description="Bad Request: only .csv allowed")
     dest = UPLOADS / secure_filename(f.filename)
+    dest.parent.mkdir(parents=True, exist_ok=True)
     f.save(dest)
     append_status_line("success", f"File uploaded: {f.filename}")
-    return "OK"
+    return jsonify(ok=True, filename=f.filename)
 
 @app.post("/log")
 def post_log():
-    api_key = os.getenv("DASH_API_KEY", "")
-    allowed = (current_user.is_authenticated and current_user.role in ("admin","editor")) \
-              or (request.headers.get("X-API-Key") == api_key)
-    if not allowed:
-        abort(403)
+    if not _api_key_allowed():
+        abort(403, description="Forbidden: bad or missing X-API-Key")
     data = request.get_json(silent=True) or {}
-    append_status_line(data.get("status", "info"), data.get("message", ""))
+    status = (data.get("status") or "info").strip()
+    message = (data.get("message") or "").strip()
+    if not message:
+        abort(400, description="Bad Request: 'message' required")
+    append_status_line(status, message)
     return jsonify(ok=True)
 
 @app.route("/download/<path:filename>")
 def download(filename):
-    # Serve from uploads/
     return send_from_directory(UPLOADS.as_posix(), filename, as_attachment=True)
 
 @app.route("/api/status")
@@ -393,25 +401,30 @@ def api_status():
 def api_csvs():
     return jsonify({"ok": True, "items": list_csvs()})
 
-# ========== Misc ==========
+# ================== Misc ==================
 @app.route("/contact")
 def contact():
-    # If contact.html exists, use it; otherwise show a simple fallback
+    # Uses templates/contact.html if present, else a simple fallback
     try:
         return render_template("contact.html", year=datetime.now().year, active="contact")
     except Exception:
-        return "<h1>Contact</h1><p>Update contact.html to customize this page.</p>"
+        return "<h1>Contact</h1><p>Update templates/contact.html to customize this page.</p>"
 
-# ========== Error Logging ==========
+# ================== Error Handling ==================
+@app.errorhandler(HTTPException)
+def handle_http_error(e):
+    # return real HTTP code (e.g., 400/403), not a masked 500
+    return e, e.code
+
 @app.errorhandler(Exception)
 def handle_any_error(e):
     try:
         with open(ERROR_LOG, "a", encoding="utf-8") as f:
-            f.write(f"[{now_ts()}] {repr(e)}\n")
+            f.write(f"[{NOW()}] {repr(e)}\n")
     except Exception:
         pass
-    # Let Flask show default error pages in dev; simple 500 otherwise
     return ("Internal Server Error", 500)
 
+# ================== Run ==================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
