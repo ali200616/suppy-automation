@@ -102,6 +102,7 @@
     tr:hover td{background:#121a28}
     .td-filename{max-width:420px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
+    /* old log styles (left for compatibility elsewhere) */
     .log{display:flex;flex-direction:column-reverse;gap:10px;max-height:420px;overflow:auto;padding-right:8px}
     .row{display:flex;align-items:flex-start;gap:10px}
     .dot{width:10px;height:10px;border-radius:6px}
@@ -118,6 +119,43 @@
                            background:#0f1a29;color:var(--ink)}
     label{font-weight:700;font-size:12px;margin-bottom:6px;display:block}
     form .row{gap:12px}
+
+    /* -------- New pretty log styles -------- */
+    .log-wrap{ padding:10px; }
+    .log-controls{
+      display:flex; gap:10px; align-items:center; margin:0 8px 10px 8px; flex-wrap:wrap
+    }
+    .log-list{
+      display:flex; flex-direction:column; gap:8px;
+      max-height:420px; overflow:auto; padding-right:8px
+    }
+    .log-item{
+      display:grid; grid-template-columns:auto 120px 1fr auto;
+      gap:10px; align-items:flex-start;
+      background: rgba(255,255,255,.03);
+      border:1px solid var(--stroke); border-radius:12px;
+      padding:8px 10px
+    }
+    .badge{
+      font-size:11px; font-weight:800; letter-spacing:.02em;
+      padding:4px 8px; border-radius:999px; line-height:1;
+      border:1px solid var(--stroke)
+    }
+    .b-info{  background:#122033; color:#b7c9e6; }
+    .b-ok{    background:#0f2a23; color:#7bffd2; border-color:#135a48; }
+    .b-warn{  background:#2a250f; color:#ffd27b; border-color:#5a4a13; }
+    .b-err{   background:#2a1111; color:#ffb3b3; border-color:#5a1313; }
+    .ts{ color:var(--muted); font-family:ui-monospace,Menlo,Consolas,monospace; white-space:nowrap }
+    .msg{ white-space:pre-wrap; word-break:break-word }
+    .ago{ color:var(--muted); font-size:12px; }
+    .mono-btn{
+      border:1px solid var(--stroke); background:var(--chip);
+      border-radius:8px; padding:6px 8px; font-weight:700; cursor:pointer
+    }
+    .mono-input{
+      width:220px; padding:8px; border-radius:10px; border:1px solid var(--stroke);
+      background:#0f1a29; color:var(--ink)
+    }
   </style>
 </head>
 <body>
@@ -144,6 +182,7 @@
         <a class="navlink {% if active=='files' %}active{% endif %}" href="{{ url_for('files_page') }}">Files</a>
         <a class="navlink {% if active=='news' %}active{% endif %}" href="{{ url_for('news_list') }}">News</a>
         <a class="navlink {% if active=='contact' %}active{% endif %}" href="{{ url_for('contact') }}">Contact</a>
+        <a class="navlink {% if active=='about' %}active{% endif %}" href="{{ url_for('about') }}">About</a>
         {% if current_user.is_authenticated and current_user.role=='admin' %}
           <a class="navlink {% if active=='users' %}active{% endif %}" href="{{ url_for('users_admin') }}">Users</a>
         {% endif %}
@@ -163,22 +202,27 @@
 <!-- Activity / Overview -->
 <div class="card" style="margin-bottom:18px">
   <h2 style="margin:6px 8px 12px 8px">Recent activity</h2>
-  <div class="log">
-    {# initial render from server 'lines'; JS will auto-refresh every 20s #}
-    {% for line in lines %}
-      {% set is_bad = ('[FAILED]' in line) or ('[ERROR]' in line) %}
-      <div class="row {{ 'bad' if is_bad else 'ok' }}">
-        <div class="dot {{ 'bad' if is_bad else 'ok' }}"></div>
-        <div class="mono">
-          <span class="abs">{{ line }}</span>
-          <span class="rel muted"></span>
-        </div>
-      </div>
-    {% endfor %}
+
+  <div class="log-wrap">
+    <div class="log-controls">
+      <select id="log-level" class="mono-input" onchange="renderLogs(window._latestLines)">
+        <option value="ALL">All levels</option>
+        <option value="SUCCESS">Success</option>
+        <option value="INFO">Info</option>
+        <option value="WARN">Warn</option>
+        <option value="ERROR">Error</option>
+      </select>
+      <input id="log-search" class="mono-input" placeholder="Search message…" oninput="renderLogs(window._latestLines)" />
+      <button class="mono-btn" onclick="refreshSections()">Refresh now</button>
+    </div>
+
+    <div id="log-list" class="log-list">
+      <!-- JS renders items here -->
+    </div>
   </div>
 </div>
 
-<!-- Files (same table the JS keeps updated) -->
+<!-- Files -->
 <div class="card">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
     <h2 style="margin:6px 8px 6px 8px">Files</h2>
@@ -199,7 +243,6 @@
       </tr>
     </thead>
     <tbody id="files-tbody">
-      {# initial render from server 'csvs'; JS will overwrite/refresh #}
       {% for f in csvs %}
       <tr data-date="{{ f.mtime[:10] }}">
         <td class="mono td-filename" title="{{ f.name }}">{{ f.name }}</td>
@@ -236,43 +279,74 @@
       const d = h/24; return `${Math.floor(d)}d ago`;
     }
 
-    function stampFromText(el){
-      const data = el.getAttribute('data-abs');
-      if (data) return data;
-      const abs = el.querySelector('.abs')?.textContent || '';
-      const m = abs.match(/\b\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\b/);
-      return m ? m[0] : '';
-    }
-
     function updateRelTimes(){
-      document.querySelectorAll('.mtime, .log .row .mono').forEach(el=>{
-        const ts = stampFromText(el);
+      document.querySelectorAll('.mtime').forEach(el=>{
+        const ts = el.getAttribute('data-abs');
         if (!ts) return;
         const relEl = el.querySelector('.rel');
         if (relEl) relEl.textContent = `(${humanize(ts)})`;
-        el.setAttribute('data-abs', ts);
       });
+    }
+
+    // ---------- Pretty log helpers ----------
+    function parseLogLine(line){
+      const m = line.match(/^\[([A-Z]+)\]\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+-\s+(.*)$/);
+      if (!m) return {raw:line, level:'INFO', ts:'', msg:line};
+      return {raw:line, level:m[1], ts:m[2], msg:m[3]};
+    }
+    function levelClass(level){
+      if (level === 'SUCCESS') return 'b-ok';
+      if (level === 'ERROR' || level === 'FAILED') return 'b-err';
+      if (level === 'WARN' || level === 'WARNING') return 'b-warn';
+      return 'b-info';
+    }
+    function escapeHtml(s){
+      return (s||'')
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;');
+    }
+    function copyRaw(btn){
+      const raw = btn.dataset.raw || '';
+      navigator.clipboard.writeText(raw).then(()=>{
+        const orig = btn.textContent;
+        btn.textContent = 'Copied';
+        setTimeout(()=>btn.textContent=orig, 900);
+      });
+    }
+    function renderLogs(lines){
+      const listEl = document.getElementById('log-list');
+      if (!listEl) return;
+
+      const levelFilter = (document.getElementById('log-level')?.value || 'ALL').toUpperCase();
+      const q = (document.getElementById('log-search')?.value || '').trim().toLowerCase();
+
+      const items = (lines || []).slice().reverse()  // newest first
+        .map(parseLogLine)
+        .filter(it => levelFilter === 'ALL' || it.level === levelFilter)
+        .filter(it => !q || it.msg.toLowerCase().includes(q));
+
+      listEl.innerHTML = items.map(it => {
+        const rel = it.ts ? ` <span class="ago">(${humanize(it.ts)})</span>` : '';
+        return `
+          <div class="log-item">
+            <span class="badge ${levelClass(it.level)}">${it.level}</span>
+            <span class="ts">${escapeHtml(it.ts)}${rel}</span>
+            <span class="msg">${escapeHtml(it.msg)}</span>
+            <button class="mono-btn" data-raw="${escapeHtml(it.raw)}" onclick="copyRaw(this)">Copy</button>
+          </div>`;
+      }).join('');
     }
 
     async function refreshSections(){
       try{
-        const logWrap = document.querySelector('.log');
-        if (logWrap){
-          const r = await fetch('{{ url_for("api_status") }}');
-          const data = await r.json();
-          logWrap.innerHTML = (data.lines||[]).slice().reverse().map(line => {
-            const bad = line.includes('[FAILED]') || line.includes('[ERROR]');
-            const good = line.includes('[SUCCESS]');
-            const m = line.match(/\b\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\b/);
-            const ts = m ? m[0] : '';
-            return `<div class="row ${bad?'bad':(good?'ok':'')}">
-              <div class="dot ${bad?'bad':'ok'}"></div>
-              <div class="mono" data-abs="${ts}">
-                <span class="abs">${line}</span> <span class="rel muted"></span>
-              </div>
-            </div>`;
-          }).join('');
-        }
+        // Logs
+        const r = await fetch('{{ url_for("api_status") }}');
+        const data = await r.json();
+        window._latestLines = data.lines || [];
+        renderLogs(window._latestLines);
+
+        // Files
         const filesTbody = document.querySelector('#files-tbody');
         if (filesTbody){
           const r2 = await fetch('{{ url_for("api_csvs") }}');
@@ -286,8 +360,9 @@
               <td><a class="btn btn-primary" href="{{ url_for('download', filename='') }}${encodeURIComponent(f.name)}">Download</a></td>
             </tr>`;
           }).join('');
-          applyDateFilter && applyDateFilter();
+          applyDateFilter();
         }
+
         updateRelTimes();
       }catch(e){}
     }
@@ -304,7 +379,8 @@
       });
     }
 
-    updateRelTimes();
+    // initial paint + polling
+    refreshSections();
     setInterval(()=>{ refreshSections(); }, 20000);
   </script>
 </body>

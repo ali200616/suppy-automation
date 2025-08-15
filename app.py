@@ -149,6 +149,14 @@ def _api_key_allowed():
         return True
     return request.headers.get("X-API-Key") == api_key_env
 
+@app.route("/healthz")
+def healthz():
+    return {"status": "ok"}
+
+@app.route("/debug/env")
+def debug_env():
+    return {k: os.getenv(k) for k in ("SHEET_ID","DASHBOARD_URL")}
+
 # ================== Routes: Core ==================
 @app.route("/")
 def home():

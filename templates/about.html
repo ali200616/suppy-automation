@@ -1,0 +1,38 @@
+{% extends "home.html" %}
+
+{% block content %}
+<div class="card" style="margin-bottom:18px">
+  <h2 style="margin:6px 8px 12px 8px">About This Portal</h2>
+  <p style="margin:0 8px 14px 8px">
+    This portal was developed by the <strong>E-Commerce App Team</strong> to improve efficiency and transparency 
+    in our product update workflow. It provides authorized employees with quick, centralized access to 
+    <strong>Manual Integration (MI) files</strong> that are now generated automatically.
+  </p>
+</div>
+
+<div class="card" style="margin-bottom:18px">
+  <h3 style="margin:6px 8px 10px 8px">What This Website Does</h3>
+  <p style="margin:0 8px 10px 8px">
+    The system collects product data from our internal sources, prepares it in the correct MI format, and 
+    uploads it to the Suppy dashboard. Every run is logged for visibility, and all generated files are 
+    stored here for easy download and review.
+  </p>
+  <ul style="margin:0 8px 10px 28px">
+    <li>Automatically generates MI files from our product database</li>
+    <li>Uploads files to Suppy for partner synchronization</li>
+    <li>Archives every file for future reference</li>
+    <li>Displays recent activity logs for accountability</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h3 style="margin:6px 8px 10px 8px">The Process</h3>
+  <p style="margin:0 8px 10px 8px">
+    1. Data is pulled from our product source (Google Sheets, ERP, etc.).<br>
+    2. The automation formats the data into the Suppy MI CSV format.<br>
+    3. The file is uploaded to Suppy automatically.<br>
+    4. A copy is stored in the “Files” section for employee access.<br>
+    5. All activity is recorded in the “Overview” log.
+  </p>
+</div>
+{% endblock %}
