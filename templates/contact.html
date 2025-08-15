@@ -1,20 +1,21 @@
 {% extends "base.html" %}
 {% set active='contact' %}
 {% block content %}
-  <h1>Contact Us</h1>
-  <div class="card">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div>
-        <h3>Phone</h3>
-        <p class="mono">{{ contact.phone or '+961-000-000' }}</p>
-        <h3 style="margin-top:10px">Email</h3>
-        <p class="mono">{{ contact.email or 'support@alforno.app' }}</p>
-      </div>
-      <div>
-        <h3>Social</h3>
-        <p><a href="{{ contact.ig or '#' }}" target="_blank" rel="noopener noreferrer">Instagram</a></p>
-        <p><a href="{{ contact.fb or '#' }}" target="_blank" rel="noopener noreferrer">Facebook</a></p>
-      </div>
+  <h1>Contact</h1>
+  <section class="card" style="max-width:520px">
+    <p class="muted">For support, reach us at:</p>
+    <div style="display:grid;grid-template-columns:120px 1fr;gap:8px">
+      <div class="muted">Email</div>
+      <div><a href="mailto:ecommerce@globalfoods.com.lb">ecommerce@globalfoods.com.lb</a></div>
+
+      <div class="muted">Phone</div>
+      <div><a href="tel:+96105815815">+961-05-815-815</a></div>
+
+      <div class="muted">Instagram</div>
+      <div><a href="https://www.instagram.com/alfornogourmet/?hl=en" target="_blank">Instagram Page</a></div>
+
+      <div class="muted">Facebook</div>
+      <div><a href="https://www.facebook.com/alfornogourmet/" target="_blank">Facebook Page</a></div>
     </div>
-  </div>
+  </section>
 {% endblock %}

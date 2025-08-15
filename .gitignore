@@ -1,2 +1,6 @@
 credentials.json
+.envapp.db
+uploads/
+logs/
 .env
+__pycache__/
