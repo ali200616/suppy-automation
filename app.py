@@ -165,9 +165,10 @@ def debug_env():
 def home():
     return render_template(
         "home.html",
-        entries=_build_activity_entries(),
+        csvs=list_csvs(),               # still used by /api if you want
+        lines=_read_status_lines(),
         year=datetime.now().year,
-        active="home"
+        active="home",
     )
 
 TS_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\b")

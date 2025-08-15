@@ -142,9 +142,9 @@
       <nav id="nav">
         <a class="navlink {% if active=='home' %}active{% endif %}" href="{{ url_for('home') }}">Overview</a>
         <a class="navlink {% if active=='files' %}active{% endif %}" href="{{ url_for('files_page') }}">Files</a>
-        <a class="navlink {% if active=='about' %}active{% endif %}" href="{{ url_for('about') }}">About</a>
         <a class="navlink {% if active=='news' %}active{% endif %}" href="{{ url_for('news_list') }}">News</a>
         <a class="navlink {% if active=='contact' %}active{% endif %}" href="{{ url_for('contact') }}">Contact</a>
+        <a class="navlink {% if active=='about' %}active{% endif %}" href="{{ url_for('about') }}">About</a>
         {% if current_user.is_authenticated and current_user.role=='admin' %}
           <a class="navlink {% if active=='users' %}active{% endif %}" href="{{ url_for('users_admin') }}">Users</a>
         {% endif %}
